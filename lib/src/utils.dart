@@ -325,3 +325,14 @@ Map themeColors = {
   'grey': Colors.grey,
   'blueGrey': Colors.blueGrey,
 };
+
+/// find the name of color starting from material colors.
+///
+/// i.e. findThemeColor(Color.green) returns 'green'
+///
+String findThemeColor(var checkColor) {
+  for (String key in themeColors.keys) {
+    if (themeColors[key] == checkColor) return key;
+  }
+  return "";
+}

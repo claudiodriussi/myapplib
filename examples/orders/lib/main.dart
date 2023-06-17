@@ -2,15 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'package:myapplib/myapplib.dart';
-import 'globals.dart';
 import "src/settings.dart";
+import 'globals.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initApp();
-
   runApp(
     MultiProvider(
       providers: [
@@ -40,9 +40,8 @@ Future<void> initApp() async {
   app.isBluetooth = false;
   app.isLocation = false;
   app.saveSettings();
-
   app.addBox('some_box');
-
+  defaultSettings();
 }
 
 class MyApp extends StatelessWidget {
@@ -55,6 +54,18 @@ class MyApp extends StatelessWidget {
       child: Consumer<ThemeNotifier>(
         builder: (context, theme, child) => MaterialApp(
           // debugShowCheckedModeBanner: false,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+          ],
+          supportedLocales: const [
+            Locale('en', 'EN'),
+            Locale('it', 'IT'),
+            Locale('es', 'ES'),
+            Locale('de', 'DE'),
+            Locale('fr', 'FR'),
+          ],
           theme: theme.getTheme(),
           home: const MyHomePage(),
         ),
@@ -89,7 +100,7 @@ class MyHomePage extends StatelessWidget {
             const SizedBox(height: 10),
             ElevatedButton(
               child: const Text('Settings'),
-              onPressed: () => { navPush(context, const EditSettings()) },
+              onPressed: () => {navPush(context, const EditSettings())},
             ),
             const SizedBox(height: 10),
             ElevatedButton(
@@ -102,55 +113,4 @@ class MyHomePage extends StatelessWidget {
       ),
     );
   }
-
-  // Future<void> _setColor(String color) async {
-  //   app.settings['themeColor'] = color;
-  //   app.settings['darkTheme'] = false;
-  //   theTheme.setLightMode();
-  //   app.saveSettings();
-  // }
 }
-
-
-/*
-
-
-
-            Text('Orders app'),
-            SizedBox(height: 8),
-
-                ElevatedButton(
-                  child: const Text('Blue'),
-                  onPressed: () async => await _setColor('blue'),
-                ),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  child: const Text('Green'),
-                  onPressed: () async => await _setColor('green'),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  child: const Text('Grey'),
-                  onPressed: () async => await _setColor('grey'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text('Switch light/dark theme'),
-            ElevatedButton(
-              child: const Text('Switch'),
-              onPressed: () async {
-                app.settings['darkTheme'] = !app.settings['darkTheme'];
-                app.saveSettings();
-                if (app.settings['darkTheme']) {
-                  theTheme.setDarkMode();
-                } else {
-                  theTheme.setLightMode();
-                }
-              },
-            ),
-          ],
- */

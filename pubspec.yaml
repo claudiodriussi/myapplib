@@ -21,7 +21,6 @@ dependencies:
   # sqflite: ^2.0.0+4
   # sqflite_common_ffi:
   # http: ^0.13.4
-  # flutter_material_color_picker: ^1.1.0+2
 
 dev_dependencies:
   flutter_test:
