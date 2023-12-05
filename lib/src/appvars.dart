@@ -90,7 +90,7 @@ class AppVars {
     defaultSetting('activationKey', '');
     defaultSetting('activationUser', '');
     defaultSetting('borderInput', 1);
-    defaultSetting('themeColor', 'blue');
+    defaultSetting('themeColor', 0xFF673AB7); // deepPurple
     defaultSetting('darkTheme', false);
     // store settings again to hive
     saveSettings();

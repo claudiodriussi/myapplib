@@ -1,0 +1,84 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"POT-Creation-Date: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: Claudio Driussi <claudio.driussi@gmail.com>\n"
+"Language-Team: \n"
+"Language: it_IT\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 3.4.1\n"
+
+#: lib/main.dart:103
+msgid "Alert box"
+msgstr "Casella di avviso"
+
+#: lib/main.dart:106
+msgid "Is Flutter awesome?"
+msgstr "Flutter è meraviglioso?"
+
+#: lib/main.dart:106
+msgid "No"
+msgstr ""
+
+#: lib/main.dart:106
+msgid "Yes"
+msgstr "Si"
+
+#: lib/src/settings.dart:24
+msgid "Settings"
+msgstr "Configurazione"
+
+#: lib/src/products.dart:125
+msgid "Products"
+msgstr "Prodotti"
+
+#: lib/src/settings.dart:27
+msgid "Preferences"
+msgstr "Preferenze"
+
+#: lib/src/settings.dart:28
+msgid "Visual"
+msgstr "Componenti visivi"
+
+#: lib/src/settings.dart:58
+msgid "Setting fields"
+msgstr "Campi di configurazione"
+
+#: lib/src/settings.dart:64
+msgid "My name"
+msgstr "Il mio nome"
+
+#: lib/src/settings.dart:75
+msgid "Date last updated"
+msgstr "Data aggiornamento"
+
+#: lib/src/settings.dart:115
+msgid "Dark/Light"
+msgstr "Scuro/Chiaro"
+
+#: lib/src/settings.dart:120
+msgid "Color picker"
+msgstr "Scegli il colore"
+
+#: lib/src/settings.dart:125
+msgid "Default"
+msgstr "Predefinito"
+
+#: lib/src/settings.dart:135
+msgid "Thin Border"
+msgstr "Bordo sottile"
+
+#: lib/src/settings.dart:135
+msgid "Full  Border"
+msgstr "Bordo pieno"
+
+#: lib/src/products.dart:157
+msgid "ProductID"
+msgstr "ID Prodotto"
+
+#: lib/src/products.dart:164
+msgid "Product name"
+msgstr "Nome prodotto"

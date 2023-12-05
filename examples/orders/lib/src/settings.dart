@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 
 import 'package:myapplib/myapplib.dart';
 import '../globals.dart';
+import '../main.i18n.dart';
 import '../utils.dart';
 
 class EditSettings extends StatelessWidget {
@@ -15,17 +16,85 @@ class EditSettings extends StatelessWidget {
     return MultiProvider(
       providers: [ChangeNotifierProvider.value(value: settings)],
       child: Consumer<HiveMap>(
-        builder: (context, doc, child) => Scaffold(
+        builder: (context, doc, child) => DefaultTabController(
+        length: 2,
+        child: Scaffold(
           appBar: AppBar(
-            title: const Text('Settings'),
+            backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+            title: Text('Settings'.i18n),
+            bottom: TabBar(
+              tabs: [
+                Tab(child: Text('Preferences'.i18n)),
+                Tab(child: Text('Visual'.i18n)),
+              ],
+            ),
           ),
-          body: _form(context),
+          body: _tabView(context),
+        ),
+      ),
+    ));
+  }
+
+  Widget _tabView(context) {
+    return TabBarView(
+      children: [
+        _preferences(context),
+        _visual(context),
+      ],
+    );
+  }
+
+  Widget _preferences(context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: ReactiveForm(
+        formGroup: settings.fgMap,
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              SizedBox(
+                height: 32,
+                child: Text(
+                  "Setting fields".i18n,
+                  style: TextStyle(fontSize: 18),
+                ),
+              ),
+              ReactiveTextField<String>(
+                formControlName: 'myName',
+                decoration: inputDecoration('My name'.i18n),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: ReactiveDateTimePicker(
+                      formControlName: 'lastUpdate',
+                      valueAccessor: DateTimeValueAccessor(
+                        dateTimeFormat: DateFormat('dd/MM/yyyy'),
+                      ),
+                      decoration: inputDecoration('Date last updated'.i18n,
+                          suffixIcon: const Icon(Icons.calendar_today)),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  submitButton(onOk: () {
+                    settings.save();
+                    defaultSettings(values: settings.box!.toMap());
+                  }),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _form(context) {
+  Widget _visual(context) {
     return Container(
       padding: const EdgeInsets.all(16),
       child: ReactiveForm(
@@ -36,34 +105,6 @@ class EditSettings extends StatelessWidget {
               const SizedBox(
                 height: 32,
                 child: Text(
-                  "Setting fields",
-                  style: TextStyle(fontSize: 18),
-                ),
-              ),
-                ReactiveTextField<String>(
-                  formControlName: 'myName',
-                  decoration: inputDecoration('My name'),
-                ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ReactiveDateTimePicker(
-                      formControlName: 'lastUpdate',
-                      valueAccessor: DateTimeValueAccessor(
-                        dateTimeFormat: DateFormat('dd/MM/yyyy'),
-                      ),
-                      decoration: inputDecoration('Date last updated',
-                          suffixIcon: const Icon(Icons.calendar_today)),
-                    ),
-                  ),
-
-                ],
-              ),
-              const SizedBox(height: 8),
-              const SizedBox(
-                height: 32,
-                child: Text(
                   "Visual components",
                   style: TextStyle(fontSize: 18),
                 ),
@@ -71,41 +112,36 @@ class EditSettings extends StatelessWidget {
               Row(
                 children: [
                   ElevatedButton(
-                    child: const Text('Color'),
-                    onPressed: () async {
-                      String s = await mainColorPicker(
-                          context, app.settings['themeColor']);
-                      app.settings['themeColor'] = s;
-                      app.settings['darkTheme'] = false;
-                      theTheme.setLightMode();
-                      app.saveSettings();
-                    },
+                    child: Text('Dark/Light'.i18n),
+                    onPressed: () => setDarkTheme(),
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton(
-                    child: const Text('Theme'),
-                    onPressed: () async {
-                      app.settings['darkTheme'] = !app.settings['darkTheme'];
-                      app.saveSettings();
-                      if (app.settings['darkTheme']) {
-                        theTheme.setDarkMode();
-                      } else {
-                        theTheme.setLightMode();
-                      }
-                    },
+                    child: Text('Color picker'.i18n),
+                    onPressed: () => colorPicker(context),
                   ),
                   const SizedBox(width: 10),
                   ElevatedButton(
-                    child: const Text('Border'),
+                    child: Text('Default'.i18n),
+                    onPressed: () => setThemeColor(defaultColor),
+                  ),
+                  const SizedBox(width: 10),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  ElevatedButton(
+                    child: Text(app.settings['borderInput'] == 1 ? 'Thin Border'.i18n : 'Full  Border'.i18n),
                     onPressed: () async {
                       app.settings['borderInput'] =
                           app.settings['borderInput'] == 1 ? 0 : 1;
                       app.saveSettings();
-                      await alertBox(context,
-                          title: "Now the border of input fields is:",
-                          text: app.settings['borderInput'] == 1
-                              ? 'Full'
-                              : 'Thin');
+                      Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                              builder: (BuildContext context) =>
+                                  EditSettings()));
                     },
                   ),
                 ],
@@ -123,9 +159,6 @@ class EditSettings extends StatelessWidget {
           ),
         ),
       ),
-
     );
   }
 }
-
-

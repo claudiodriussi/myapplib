@@ -3,10 +3,13 @@ import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:i18n_extension/i18n_widget.dart';
 
 import 'package:myapplib/myapplib.dart';
 import "src/settings.dart";
+import "src/products.dart";
 import 'globals.dart';
+import "main.i18n.dart";
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -40,8 +43,10 @@ Future<void> initApp() async {
   app.isBluetooth = false;
   app.isLocation = false;
   app.saveSettings();
-  app.addBox('some_box');
+  app.addBox('products');
   defaultSettings();
+
+  MyI18n.loadTranslations();
 }
 
 class MyApp extends StatelessWidget {
@@ -66,8 +71,14 @@ class MyApp extends StatelessWidget {
             Locale('de', 'DE'),
             Locale('fr', 'FR'),
           ],
-          theme: theme.getTheme(),
-          home: const MyHomePage(),
+          theme: theme.setTheme(),
+          darkTheme: theme.setTheme(),
+          themeMode: ThemeMode.light,
+          home: I18n(
+            child: MyHomePage(),
+          ),
+
+          // home: const MyHomePage(),
         ),
       ),
     );
@@ -81,6 +92,7 @@ class MyHomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
         title: const Text('Ordes app'),
       ),
       body: Center(
@@ -88,10 +100,10 @@ class MyHomePage extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             ElevatedButton(
-                child: const Text('Alert box'),
+                child: Text('Alert box'.i18n),
                 onPressed: () async {
                   bool isOk = await alertBox(context,
-                      text: "Is Flutter awesome?", buttons: ['No', 'Yes']);
+                      text: "Is Flutter awesome?".i18n, buttons: ['No'.i18n, 'Yes'.i18n]);
                   if (isOk) {
                     // ignore: use_build_context_synchronously
                     await alertBox(context, text: "Yeah!");
@@ -99,14 +111,16 @@ class MyHomePage extends StatelessWidget {
                 }),
             const SizedBox(height: 10),
             ElevatedButton(
-              child: const Text('Settings'),
+              child: Text('Settings'.i18n),
               onPressed: () => {navPush(context, const EditSettings())},
             ),
             const SizedBox(height: 10),
             ElevatedButton(
-              child: const Text('Alert box'),
-              onPressed: () => {},
-            ),
+                child: Text('Products'.i18n),
+                onPressed: () async {
+                  products.load("products");
+                  navPush(context, const EditProducts());
+                }),
             const SizedBox(height: 10),
           ],
         ),

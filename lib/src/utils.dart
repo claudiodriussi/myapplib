@@ -110,7 +110,6 @@ Future<void> navPush(context, page, {onStart}) async {
   );
 }
 
-
 /// standard decoration for input fields, can have a suffix icon
 ///
 /// if [search] is present the icon is an IconButton which call the callback
@@ -142,7 +141,7 @@ InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon}) {
   PopupMenuButton popButton(onSelected, popMenu, {sIcon}) {
     List<PopupMenuEntry<dynamic>> ll = [];
     for (var item in popMenu) {
-      ll.add(PopupMenuItem(child: Text(item), value: item));
+      ll.add(PopupMenuItem(value: item, child: Text(item)));
     }
     return PopupMenuButton(
       icon: sIcon ?? const Icon(Icons.arrow_drop_down),
@@ -166,7 +165,6 @@ InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon}) {
   );
   return input;
 }
-
 
 /// short code for an alert box
 ///
@@ -248,54 +246,61 @@ void formGroupReset(formGroup, {List<String>? exceptFields}) {
 
 /// reactive_forms validator for double numbers
 ///
-Map<String, dynamic>? floatNumber(AbstractControl<dynamic> control) {
-  final RegExp numberRegex = RegExp(r'[+-]?([0-9]*[.])?[0-9]+$');
-  if (control.isNull || !numberRegex.hasMatch(control.value.toString())) {
-    return {'Non valido': true};
+class FloatValidator extends Validator<dynamic> {
+  /// The regex expression of a numeric string value.
+  static final RegExp numberRegex = RegExp(r'[+-]?([0-9]*[.])?[0-9]+$');
+  const FloatValidator() : super();
+  @override
+  Map<String, dynamic>? validate(AbstractControl<dynamic> control) {
+    return (control.value == null) ||
+            !numberRegex.hasMatch(control.value.toString())
+        ? <String, dynamic>{ValidationMessage.number: true}
+        : null;
   }
-  return null;
+}
+
+/// set the current theme color from an integer
+///
+void setThemeColor(int color) {
+  app.settings['themeColor'] = color;
+  app.saveSettings();
+  theTheme.setTheme();
+  theTheme.notify();
+}
+
+/// switch or force dark and light theme
+///
+void setDarkTheme({bool? dark}) {
+  if (dark == null) {
+    app.settings['darkTheme'] = !app.settings['darkTheme'];
+  } else {
+    app.settings['darkTheme'] = dark;
+  }
+  app.saveSettings();
+  theTheme.setTheme();
+  theTheme.notify();
 }
 
 /// A theme changer which use ChangeNotifier to use Provider package as state
 /// manager.
 /// The persistence is managed by app.settings fields "themeColor" and
 /// "darkTheme"
+/// It uses Material Design 3
 ///
 class ThemeNotifier with ChangeNotifier {
-  final darkTheme = ThemeData(
-    useMaterial3: true,
-    primarySwatch: Colors.grey,
-    primaryColor: Colors.black,
-    brightness: Brightness.dark,
-    dividerColor: Colors.black12,
-  );
+  ThemeData theTheme = ThemeData(useMaterial3: true);
 
-  var lightTheme = ThemeData(
-    primarySwatch: themeColors[app.settings['themeColor']],
-  );
-
-  late ThemeData _themeData;
-  ThemeData getTheme() => _themeData;
-
-  ThemeNotifier() {
-    if (app.settings['darkTheme']) {
-      _themeData = darkTheme;
-    } else {
-      _themeData = lightTheme;
-    }
-    notifyListeners();
-  }
-
-  void setDarkMode() async {
-    _themeData = darkTheme;
-    notifyListeners();
-  }
-
-  void setLightMode() async {
-    lightTheme = ThemeData(
-      primarySwatch: themeColors[app.settings['themeColor']],
+  ThemeData setTheme() {
+    theTheme = ThemeData(
+      useMaterial3: true,
+      brightness:
+          app.settings['darkTheme'] ? Brightness.dark : Brightness.light,
+      colorSchemeSeed: Color(app.settings['themeColor']),
     );
-    _themeData = lightTheme;
+    return theTheme;
+  }
+
+  void notify() {
     notifyListeners();
   }
 }
@@ -303,27 +308,29 @@ class ThemeNotifier with ChangeNotifier {
 // global variable used to handle themes
 ThemeNotifier theTheme = ThemeNotifier();
 
+
+
 // map with material color themes
 Map themeColors = {
-  'red': Colors.red,
-  'pink': Colors.pink,
-  'purple': Colors.purple,
-  'deepPurple': Colors.deepPurple,
-  'indigo': Colors.indigo,
-  'blue': Colors.blue,
-  'lightBlue': Colors.lightBlue,
-  'cyan': Colors.cyan,
-  'teal': Colors.teal,
-  'green': Colors.green,
-  'lightGreen': Colors.lightGreen,
-  'lime': Colors.lime,
-  'yellow': Colors.yellow,
-  'amber': Colors.amber,
-  'orange': Colors.orange,
-  'deepOrange': Colors.deepOrange,
-  'brown': Colors.brown,
-  'grey': Colors.grey,
-  'blueGrey': Colors.blueGrey,
+  'red': Colors.red,                // 0xFFF44336
+  'pink': Colors.pink,              // 0xFFE91E63
+  'purple': Colors.purple,          // 0xFF9C27B0
+  'deepPurple': Colors.deepPurple,  // 0xFF673AB7
+  'indigo': Colors.indigo,          // 0xFF3F51B5
+  'blue': Colors.blue,              // 0xFF2196F3
+  'lightBlue': Colors.lightBlue,    // 0xFF03A9F4
+  'cyan': Colors.cyan,              // 0xFF00BCD4
+  'teal': Colors.teal,              // 0xFF009688
+  'green': Colors.green,            // 0xFF4CAF50
+  'lightGreen': Colors.lightGreen,  // 0xFF8BC34A
+  'lime': Colors.lime,              // 0xFFCDDC39
+  'yellow': Colors.yellow,          // 0xFFFFEB3B
+  'amber': Colors.amber,            // 0xFFFFC107
+  'orange': Colors.orange,          // 0xFFFF9800
+  'deepOrange': Colors.deepOrange,  // 0xFFFF5722
+  'brown': Colors.brown,            // 0xFF795548
+  'grey': Colors.grey,              // 0xFF9E9E9E
+  'blueGrey': Colors.blueGrey,      // 0xFF607D8B
 };
 
 /// find the name of color starting from material colors.
