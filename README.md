@@ -7,24 +7,22 @@ You can use it as is, or dig into it to build your own library
 
 ## Features
 
-TODO: List what your package can do. Maybe include images, gifs, or videos.
+For the moment, the library is in an initial state.
+
+There is still a lot of work to be done, and it will be carried out gradually
+as projects using it are developed.
 
 ## Getting started
 
-TODO: List prerequisites and provide or point to information on how to
-start using the package.
+You shouldn't trust it entirely, but you can test the examples in the `/examples` folder.
+
+By examining the source code, you can determine if it suits your needs.
+Your suggestions for improvements would be greatly appreciated."
 
 ## Usage
 
-TODO: Include short and useful examples for package users. Add longer examples
-to `/example` folder.
+Try examples in `/examples` folder.
 
-```dart
-const like = 'sample';
-```
+## Bug/Requests
 
-## Additional information
-
-TODO: Tell users more about the package: where to find more information, how to
-contribute to the package, how to file issues, what response they can expect
-from the package authors, and more.
+Feel free to report bugs or requests.

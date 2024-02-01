@@ -1,3 +1,5 @@
+import 'dart:ffi';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:reactive_forms/reactive_forms.dart';
@@ -162,6 +164,31 @@ class ProductRow extends StatelessWidget {
                     child: ReactiveTextField<String>(
                       formControlName: 'name',
                       decoration: inputDecoration('Product name'.i18n),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: ReactiveTextField<String>(
+                      formControlName: 'unit',
+                      decoration: inputDecoration('Measure Unit'.i18n),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ReactiveTextField<double>(
+                      formControlName: 'vat',
+                      decoration: inputDecoration('Vat %'.i18n),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ReactiveTextField<double>(
+                      formControlName: 'price',
+                      decoration: inputDecoration('Price'.i18n),
                     ),
                   ),
                 ],
