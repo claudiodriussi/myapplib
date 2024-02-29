@@ -20,8 +20,8 @@ dependencies:
   reactive_date_time_picker: ^3.0.0
   i18n_extension: ^10.0.1
   i18n_extension_importer: ^0.0.6
-  # sqflite: ^2.0.0+4
-  # sqflite_common_ffi:
+  sqflite:
+  sqflite_common_ffi:
   # http: ^0.13.4
 
 dev_dependencies:
