@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
+import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 
+import "my.i18n.dart";
 import 'appvars.dart';
 
 /// Load a text file, if fails return null
@@ -66,7 +68,8 @@ num calcDiscount(num value, List discounts) {
 
 /// empty values of a map.
 ///
-/// Recognize standard dart types, objects are lived untouched except DateTime
+/// Recognize standard dart types, objects are lived untouched, DateTime are
+/// set to null
 ///
 void map2empty(Map map) {
   map.forEach((k, v) {
@@ -90,7 +93,8 @@ void map2empty(Map map) {
         map[k] = {};
         break;
       case DateTime:
-        map[k] = DateTime.now();
+        // map[k] = DateTime.now();
+        map[k] = null;
         break;
       default:
       // map[k] = null;
@@ -210,10 +214,76 @@ Future<bool> alertBox(
   return result;
 }
 
+/// textBox
+///
+/// let the user to enter a string. If the app is on mobile platform the field
+/// can be read from barcode scanner emulate4d with the camera.
+///
+Future<String> textBox(
+  BuildContext context, {
+  String text = 'Enter text',
+  String title = '',
+  String value = '',
+  bool barcode = false,
+}) async {
+  TextEditingController _textFieldController = TextEditingController();
+  String result = value;
+  _textFieldController.text = result;
+  IconButton? bars;
+
+  if (barcode && app.isMobile()) {
+    bars = IconButton(
+      onPressed: () async {
+        String barcodeScanRes;
+        try {
+          barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
+              '#ff6666', 'Annulla', true, ScanMode.BARCODE);
+          if (barcodeScanRes != '-1') {
+            _textFieldController.text = barcodeScanRes;
+          }
+        } catch (_) {
+          await alertBox(context, text: "Barcode not allowed.".i18n);
+        }
+      },
+      icon: const Icon(Icons.barcode_reader), // Icons.line_weight
+    );
+  }
+
+  await showDialog<String>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: Text(title),
+      content: TextField(
+        controller: _textFieldController,
+        decoration: InputDecoration(
+          hintText: text.i18n,
+          suffixIcon: bars,
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+          },
+          child: Text('Cancel'.i18n),
+        ),
+        TextButton(
+          onPressed: () {
+            result = _textFieldController.text;
+            Navigator.pop(context);
+          },
+          child: Text('Ok'.i18n),
+        ),
+      ],
+    ),
+  );
+  return result;
+}
+
 /// set default value to reactive_forms [FormGroup] fields.
 ///
 /// all fields not present in [exceptFields] or if its value is [null] are
-/// set to '' (empty string)
+/// set to '' (empty string),objects and dates are set to null
 ///
 void formGroupReset(formGroup, {List<String>? exceptFields}) {
   exceptFields ??= [];
@@ -237,7 +307,8 @@ void formGroupReset(formGroup, {List<String>? exceptFields}) {
         continue;
       } catch (_) {}
       try {
-        formGroup.control(key).value = DateTime.now();
+        // formGroup.control(key).value = DateTime.now();
+        formGroup.control(key).value = null;
         continue;
       } catch (_) {}
     }
@@ -308,29 +379,27 @@ class ThemeNotifier with ChangeNotifier {
 // global variable used to handle themes
 ThemeNotifier theTheme = ThemeNotifier();
 
-
-
 // map with material color themes
 Map themeColors = {
-  'red': Colors.red,                // 0xFFF44336
-  'pink': Colors.pink,              // 0xFFE91E63
-  'purple': Colors.purple,          // 0xFF9C27B0
-  'deepPurple': Colors.deepPurple,  // 0xFF673AB7
-  'indigo': Colors.indigo,          // 0xFF3F51B5
-  'blue': Colors.blue,              // 0xFF2196F3
-  'lightBlue': Colors.lightBlue,    // 0xFF03A9F4
-  'cyan': Colors.cyan,              // 0xFF00BCD4
-  'teal': Colors.teal,              // 0xFF009688
-  'green': Colors.green,            // 0xFF4CAF50
-  'lightGreen': Colors.lightGreen,  // 0xFF8BC34A
-  'lime': Colors.lime,              // 0xFFCDDC39
-  'yellow': Colors.yellow,          // 0xFFFFEB3B
-  'amber': Colors.amber,            // 0xFFFFC107
-  'orange': Colors.orange,          // 0xFFFF9800
-  'deepOrange': Colors.deepOrange,  // 0xFFFF5722
-  'brown': Colors.brown,            // 0xFF795548
-  'grey': Colors.grey,              // 0xFF9E9E9E
-  'blueGrey': Colors.blueGrey,      // 0xFF607D8B
+  'red': Colors.red, // 0xFFF44336
+  'pink': Colors.pink, // 0xFFE91E63
+  'purple': Colors.purple, // 0xFF9C27B0
+  'deepPurple': Colors.deepPurple, // 0xFF673AB7
+  'indigo': Colors.indigo, // 0xFF3F51B5
+  'blue': Colors.blue, // 0xFF2196F3
+  'lightBlue': Colors.lightBlue, // 0xFF03A9F4
+  'cyan': Colors.cyan, // 0xFF00BCD4
+  'teal': Colors.teal, // 0xFF009688
+  'green': Colors.green, // 0xFF4CAF50
+  'lightGreen': Colors.lightGreen, // 0xFF8BC34A
+  'lime': Colors.lime, // 0xFFCDDC39
+  'yellow': Colors.yellow, // 0xFFFFEB3B
+  'amber': Colors.amber, // 0xFFFFC107
+  'orange': Colors.orange, // 0xFFFF9800
+  'deepOrange': Colors.deepOrange, // 0xFFFF5722
+  'brown': Colors.brown, // 0xFF795548
+  'grey': Colors.grey, // 0xFF9E9E9E
+  'blueGrey': Colors.blueGrey, // 0xFF607D8B
 };
 
 /// find the name of color starting from material colors.

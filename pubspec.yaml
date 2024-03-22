@@ -18,11 +18,11 @@ dependencies:
   path: ^1.8.3
   reactive_forms: ^16.1.1
   reactive_date_time_picker: ^3.0.0
-  i18n_extension: ^10.0.1
+  i18n_extension: ^11.0.12
   i18n_extension_importer: ^0.0.6
   sqflite:
   sqflite_common_ffi:
-  # http: ^0.13.4
+  flutter_barcode_scanner: ^2.0.0
 
 dev_dependencies:
   flutter_test:

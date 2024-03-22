@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:i18n_extension/i18n_widget.dart';
+import 'package:i18n_extension/i18n_extension.dart';
 
 import 'package:myapplib/myapplib.dart';
 import "src/settings.dart";
@@ -106,7 +106,7 @@ class MyHomePage extends StatelessWidget {
                       text: "Is Flutter awesome?".i18n, buttons: ['No'.i18n, 'Yes'.i18n]);
                   if (isOk) {
                     // ignore: use_build_context_synchronously
-                    await alertBox(context, text: "Yeah!");
+                    await textBox(context, text: "Yeah!", barcode: true);
                   }
                 }),
             const SizedBox(height: 10),

@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 import 'package:hive/hive.dart';
-// import 'package:i18n_extension/i18n_widget.dart';
 
 import "my.i18n.dart";
 import 'utils.dart';
@@ -56,10 +55,13 @@ class HiveMap with ChangeNotifier {
     notifyListeners();
   }
 }
-
+/// A document is composed by an header and some rows. The header and each row
+/// can be edited with a reactive_forms formGroup.
+/// The class contains methods to manipulate data ahd to notify changes to
+/// provider.
+///
 class Document with ChangeNotifier {
   List rows = []; // document rows
-  List rowsList = []; // rows for filtered listView
   dynamic key; // document key (null = new document)
   bool modified = false; // the document was modified, should be saved
   bool editOk = true; // the form is validated, must be false before editing
@@ -77,6 +79,8 @@ class Document with ChangeNotifier {
   /// shortcode for fgRow.control
   AbstractControl<dynamic> R(name) => fgRow.control(name);
 
+  /// call the editFn to modify the header.
+  ///
   Future<void> editHeader({required editFn}) async {
     editOk = true;
     await editFn();
@@ -86,6 +90,8 @@ class Document with ChangeNotifier {
     }
   }
 
+  /// edi the give row, or add a new row.
+  ///
   Future<void> editRow(
       {required int numRow,
       required editFn,
@@ -141,6 +147,8 @@ class Document with ChangeNotifier {
     rows.add(row);
   }
 
+  /// ask for permission and remove a row
+  ///
   Future<void> removeRow(int index, {context, text}) async {
     if (context != null) {
       text ??= 'Confirm delete?'.i18n;
@@ -157,6 +165,8 @@ class Document with ChangeNotifier {
     notifyListeners();
   }
 
+  /// reset documento to empty
+  ///
   Future<void> reset({List<String>? exceptFields}) async {
     formGroupReset(fgHeader, exceptFields: exceptFields);
     rows = [];
@@ -166,18 +176,18 @@ class Document with ChangeNotifier {
   }
 
   Future<void> save() async {
-    // le derivate gestiscono la persistenza
+    // derived classes handle persistence
   }
 
   Future<void> load(key) async {
-    // le derivate gestiscono la persistenza
+    // derived classes handle persistence
   }
 
-  /// restituisce una map con i valori di self
+  /// return a Map with the values of self.
   ///
-  /// escludo i campi nascosti, quelli la cui chiave inizia con "_", i campi
-  /// nascosti servono quando ho bisogno di campi nelle form che non vanno
-  /// salvati nel documento.
+  /// the fields names that begin with "_" are hidden and are excluded form
+  /// Map. Are used when we need fields on the form that don't need to be saved
+  /// on document.
   ///
   Map<String, dynamic> toMap() {
     // esclusione campi nascosti della header
@@ -205,10 +215,10 @@ class Document with ChangeNotifier {
     };
   }
 
-  /// serializza il document in una stringa json
+  /// serialize the document in a json string.
   ///
-  /// trasforma tutte le variabili non serializzabili in string ed alla fine
-  /// chiama la funzione jsonEncode
+  /// transform all not serializable variables in string and the call the
+  /// function jsonEncode
   ///
   String toJson({data}) {
     data ??= toMap();
@@ -242,23 +252,29 @@ class Document with ChangeNotifier {
   void notify() => notifyListeners();
 }
 
+/// add persistence to a Document using a hiveBox.
+///
 mixin Document2Hive on Document {
   Box? _box;
 
   void setBox(box) => _box = box;
 
+  /// the document is transformed in Map and then stored to the box indexed by
+  /// the key.
+  ///
   @override
   Future<void> save() async {
     _box?.put(key, toMap());
   }
 
+  /// load the documento form the hive box.
   @override
   Future<void> load(key) async {
     var value = _box?.get(key);
     get(value);
   }
 
-  ///
+  /// called by load method to restore the Document from a map.
   ///
   void get(value) {
     reset();
@@ -276,6 +292,8 @@ mixin Document2Hive on Document {
   }
 }
 
+/// the default submit button used with reactive_forms
+///
 ReactiveButton submitButton({text = 'Ok', onOk}) {
   var rb = ReactiveButton();
   rb.text = text;
@@ -283,6 +301,7 @@ ReactiveButton submitButton({text = 'Ok', onOk}) {
   return rb;
 }
 
+/// a ReactiveButton is a button that validate a reactive_forms form and pop it.
 // ignore: must_be_immutable
 class ReactiveButton extends StatelessWidget {
   ReactiveButton({Key? key}) : super(key: key);

@@ -104,10 +104,14 @@ class SqlDB {
 ///
 /// the names of controls of the [FormGroup] must match the names of Database
 /// fields, or start with a dot '.' and the type must be String. In this way
-/// query can be automated using the "LIKE UPPER(?)" sql clause.
+/// query can be automated using the "LIKE UPPER(?)" sql clause on String
+/// fields, and the equal clause on the other fields.
 ///
-/// Fields starting with dot can be used ro give the [extraWhere] clause to the
+/// Fields starting with dot can be used to give the [extraWhere] clause to the
 /// [query()] method.
+///
+/// the result query can be used to popolate a ListView. The field isSearch
+/// can be used to say to the ListView if add the button used to chose the row.
 ///
 class SearchForm with ChangeNotifier {
   SqlDB sqldb;
@@ -116,6 +120,7 @@ class SearchForm with ChangeNotifier {
   List<String>? columns;
   String? orderBy;
   int? limit;
+  bool isSearch = true;
   dynamic result;
   dynamic q = [];
 
@@ -184,81 +189,12 @@ class SearchForm with ChangeNotifier {
     result = null;
     return q;
   }
+
+  /// once a row of the query is selected, the id is put on result field, and
+  /// the value of isSearch is put to true which is the default behavior
+  void found(context, value) {
+    isSearch = true;
+    result = value;
+    Navigator.pop(context);
+  }
 }
-
-// !!! Non serve. posso usare formgroup.rawValue
-//
-// Map<String, dynamic> formGroup2Map(FormGroup formGroup) {
-//   Map<String, dynamic> map = {};
-//   for (String key in formGroup.controls.keys) {
-//     map[key] = formGroup.control(key).value;
-//   }
-//   return map;
-// }
-
-
-
-/*
-  OLD NOT WORKING!!!
-
-  // this was the call
-  print('wait...');
-  var f = File(app.dataDir + '/db/anagrafiche.sql');
-  var s = await loadTextFile(f);
-  if (s != null) {
-    var ok = await sqldb.importSql(s);
-  }
-  print('done!');
-
-  /// import a whole database from a single string with many sql commands.
-  /// nultiline commands are forbidden and each line must contain a single command
-  /// ensure that string contain all needed to recreate database.
-  ///
-  /// the string must be a valid utf-8, and be aware that the execution can be slow
-  ///
-  Future<bool> importSql(String sql) async {
-    String tempFile = "$dbPath/_temp.sqlite";
-
-    // split string into lines and ensure that in not empty
-    List<String> commands = sql.split('\n');
-    if (commands.isEmpty) {
-      return false;
-    }
-
-    try {
-      File f = File(tempFile);
-      await f.delete();
-    } catch (e) {
-      print(e);
-    }
-
-    try {
-      await db.close();
-      await openDatabase(tempFile);
-      for (String command in commands) {
-        try {
-          await db.execute(command);
-        } catch (e) {
-          // the line is invalid
-        }
-      }
-      await db.close();
-    } catch (e) {
-      // if something goes wrong try to reuse the old database
-      await db.close();
-      await openDatabase(fileName);
-      return false;
-    }
-    try {
-      File f = File(tempFile);
-      f.copy(fileName);
-    } catch (e) {
-      await openDatabase(fileName);
-      return false;
-    }
-    // the command succeded
-    await openDatabase(fileName);
-    return true;
-  }
-
-*/
