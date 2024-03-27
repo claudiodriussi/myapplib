@@ -198,3 +198,86 @@ class SearchForm with ChangeNotifier {
     Navigator.pop(context);
   }
 }
+
+/// Implements a search system for values inserted into a reactive_forms
+/// [FormGroup] using an [SqlDB],
+///
+/// You have to add an [IdSearchFld] for every field that you would like to
+/// search. Then you can call the method find to search the field and once
+/// the record is found you can call the method cur to get the map of the
+/// found record.
+///
+/// If you pass a reference to a class capable to notifyListeners, the changes
+/// are notified, otherwise you must to do it by yourself.
+///
+class IdSearch {
+  late SqlDB sqldb;
+  late FormGroup fg;
+  late var notifier;
+  Map fields = {};
+
+  IdSearch(this.sqldb, this.fg, {this.notifier});
+
+  /// add a [IdSearchFld] into the list of fields to search
+  void add(IdSearchFld field) {
+    fields[field.id] = field;
+  }
+
+  /// search a record into the database for the [IdSearchFld] if passed.
+  ///
+  /// If the value of field in the [FormGroup] is changed, the field is searched
+  /// into the [SqlDB] table and stored into the current record.
+  /// Then if the destination FormGroup field is passed, it is filled with the
+  /// content of fields passed in the description fields.
+  /// At last if the notified class instance is passed, the notifyListeners
+  /// method is performed.
+  ///
+  Future<void> find(id) async {
+    IdSearchFld f = fields[id];
+    if (f.curId == null || f.curId != fg.control(id).value) {
+      f.curValue = await sqldb.find(f.table, fg.control(id).value, empty: true);
+      f.curId = f.curValue[sqldb.idName];
+      if (f.destination != null) {
+        List dsc;
+        if (f.description is String) {
+          dsc = [f.description];
+        } else {
+          dsc = f.description;
+        }
+        var s = '';
+        for (String fld in dsc) {
+          s += ' ${f.curValue[fld]}';
+        }
+        fg.control(f.destination!).value = s.trim();
+      }
+      if (notifier != null) notifier.notifyListeners();
+    }
+  }
+
+  /// returns the value of the last searched [IdSearchFld] field
+  Map cur(id) => fields[id].curValue;
+}
+
+/// this class represents a field used by [IdSearch] class.
+///
+/// It store all data needed to search a value into a [SqlDB] table.
+///
+class IdSearchFld {
+  late String id; // id name of field to search into the FormGroup
+  late String table; // table name to search into sql db
+  late String?
+      destination; // optional destination field into FormGroup used to store names coming from table
+  dynamic
+      description; // String or List of strings containing the fields of table which must be stored in the description field.
+  dynamic
+      curId; // the last id searched used to avoid to search again if it is the same of last search
+  dynamic curValue; // store the current value of the last record found
+  IdSearchFld(
+    this.id,
+    this.table, {
+    this.destination,
+    this.description,
+  });
+}
+
+
