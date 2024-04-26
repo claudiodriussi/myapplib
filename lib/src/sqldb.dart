@@ -137,6 +137,16 @@ class SearchForm with ChangeNotifier {
   /// set value of a field in the search form group
   void setVal(String key, var value) => group.control(key).value = value;
 
+  /// perform a progressive search.
+  /// Once the len of string is almost [numChars] length call the query to
+  /// to do an automatic filter, it works only on String data.
+  ///
+  Future<void> search(key, {numChars = 1}) async {
+    if (group.control(key).value.length >= numChars) {
+      query();
+    }
+  }
+
   /// set default value to [FormGroup] fields.
   ///
   /// all fields not present in [exceptFields] or if its value is [null] are
@@ -231,8 +241,9 @@ class IdSearch {
   /// content of fields passed in the description fields.
   /// At last if the notified class instance is passed, the notifyListeners
   /// method is performed.
+  /// Return true if the field was changed.
   ///
-  Future<void> find(id) async {
+  Future<bool> find(id) async {
     IdSearchFld f = fields[id];
     if (f.curId == null || f.curId != fg.control(id).value) {
       f.curValue = await sqldb.find(f.table, fg.control(id).value, empty: true);
@@ -251,7 +262,9 @@ class IdSearch {
         fg.control(f.destination!).value = s.trim();
       }
       if (notifier != null) notifier.notifyListeners();
+      return true;
     }
+    return false;
   }
 
   /// returns the value of the last searched [IdSearchFld] field
@@ -279,5 +292,3 @@ class IdSearchFld {
     this.description,
   });
 }
-
-
