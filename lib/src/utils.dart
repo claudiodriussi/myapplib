@@ -122,9 +122,10 @@ Future<void> navPush(context, page, {onStart}) async {
 /// decoration: inputDecoration('my field', search: () {},
 /// decoration: inputDecoration('my field', popMenu: ['one','two'], search: (v) {},
 ///
-InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon}) {
+InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon, info, prefixIcon}) {
   OutlineInputBorder? border;
   Widget? icon;
+  Widget? infoIcon;
 
   // choose the style of border
   switch (app.settings['borderInput'] ?? 0) {
@@ -138,6 +139,13 @@ InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon}) {
   IconButton searchButton(onPressed, {sIcon}) {
     return IconButton(
       icon: sIcon ?? const Icon(Icons.search),
+      onPressed: onPressed,
+    );
+  }
+
+  IconButton infoButton(onPressed, {iIcon}) {
+    return IconButton(
+      icon: iIcon ?? const Icon(Icons.info_outline),
       onPressed: onPressed,
     );
   }
@@ -162,10 +170,15 @@ InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon}) {
     }
   }
 
+  if (info != null || prefixIcon != null) {
+    infoIcon = infoButton(info, iIcon: suffixIcon);
+  }
+
   InputDecoration input = InputDecoration(
     labelText: label,
     border: border,
     suffixIcon: icon,
+    prefixIcon: infoIcon,
   );
   return input;
 }

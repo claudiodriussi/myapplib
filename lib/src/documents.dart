@@ -47,6 +47,9 @@ class HiveMap with ChangeNotifier {
 
   void set(key, value) => fgMap.control(key).value = value;
 
+  /// short code for fgMap.control
+  AbstractControl<dynamic> F(key) => fgMap.control(key);
+
   /// update a single value
   Future<void> update(key, value) async {
     set(key, value);
@@ -270,7 +273,7 @@ class ListRows {
 
   /// restore rows from a list of maps.
   ///
-  /// TODO: value must be checked for DateTime fields and hidden fields
+  /// ToDo: value must be checked for DateTime fields and hidden fields
   ///
   void fromMap(value) {
     value.forEach((val) {

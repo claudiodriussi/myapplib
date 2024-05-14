@@ -235,37 +235,43 @@ class IdSearch {
 
   /// search a record into the database for the [IdSearchFld] if passed.
   ///
-  /// If the value of field in the [FormGroup] is changed, the field is searched
-  /// into the [SqlDB] table and stored into the current record.
+  /// The field is searched into the [SqlDB] table and stored into the current
+  /// record.
   /// Then if the destination FormGroup field is passed, it is filled with the
   /// content of fields passed in the description fields.
   /// At last if the notified class instance is passed, the notifyListeners
   /// method is performed.
-  /// Return true if the field was changed.
+  /// Return true if the field was found.
   ///
   Future<bool> find(id) async {
+    bool result = true;
     IdSearchFld f = fields[id];
-    if (f.curId == null || f.curId != fg.control(id).value) {
-      f.curValue = await sqldb.find(f.table, fg.control(id).value, empty: true);
-      f.curId = f.curValue[sqldb.idName];
-      if (f.destination != null) {
-        List dsc;
-        if (f.description is String) {
-          dsc = [f.description];
-        } else {
-          dsc = f.description;
-        }
-        var s = '';
-        for (String fld in dsc) {
-          s += ' ${f.curValue[fld]}';
-        }
-        fg.control(f.destination!).value = s.trim();
-      }
-      if (notifier != null) notifier.notifyListeners();
-      return true;
+    f.prevId = f.curId;
+    f.curValue = await sqldb.find(f.table, fg.control(id).value, empty: true);
+    if (f.curValue.isEmpty) {
+      result = false;
+      f.curValue = sqldb.toEmpty(f.table);
     }
-    return false;
+    f.curId = f.curValue[sqldb.idName];
+    if (f.destination != null) {
+      List dsc;
+      if (f.description is String) {
+        dsc = [f.description];
+      } else {
+        dsc = f.description;
+      }
+      var s = '';
+      for (String fld in dsc) {
+        s += ' ${f.curValue[fld]}';
+      }
+      fg.control(f.destination!).value = s.trim();
+    }
+    if (notifier != null) notifier.notifyListeners();
+    return result;
   }
+
+  /// check if the id of the field is changed since last search
+  bool isChanged(id) => fields[id].curId != fields[id].prevId;
 
   /// returns the value of the last searched [IdSearchFld] field
   Map cur(id) => fields[id].curValue;
@@ -282,8 +288,8 @@ class IdSearchFld {
       destination; // optional destination field into FormGroup used to store names coming from table
   dynamic
       description; // String or List of strings containing the fields of table which must be stored in the description field.
-  dynamic
-      curId; // the last id searched used to avoid to search again if it is the same of last search
+  dynamic curId; // the last id searched
+  dynamic prevId; // the value present before search
   dynamic curValue; // store the current value of the last record found
   IdSearchFld(
     this.id,
