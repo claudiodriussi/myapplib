@@ -18,6 +18,7 @@ class AppVars {
   // identity
   String appName = 'flutter_app';
   String appVersion = '0.1.0';
+  String appDate = '0000-00-00';
   bool isEnabled = true; // if you wish you can protect you app in some way
 
   // android permissions

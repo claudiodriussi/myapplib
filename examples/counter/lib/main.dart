@@ -38,7 +38,7 @@ Future<void> initApp() async {
     DeviceInfoPlugin deviceInfo = DeviceInfoPlugin();
     AndroidDeviceInfo androidInfo = await deviceInfo.androidInfo;
     app.settings['deviceInfo'] = androidInfo.toMap();
-    app.settings['deviceId'] = androidInfo.androidId;
+    // app.settings['deviceId'] = androidInfo.androidId;
   } else {
     app.settings['deviceInfo'] = {};
     app.settings['deviceId'] = 'ok';

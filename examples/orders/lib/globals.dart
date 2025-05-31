@@ -46,7 +46,7 @@ Products products = Products(
 class Products extends Document with Document2Hive {
   Products({fgHeader, fgRow}) {
     this.fgHeader = fgHeader;
-    this.fgRow = fgRow;
+    // this.fgRow = fgRow;
     key = "products"; // only one record in this box
     setBox(app.hiveBoxes['products']);
   }

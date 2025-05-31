@@ -1,26 +1,26 @@
 import 'package:i18n_extension/i18n_extension.dart';
 
 extension Localization on String {
-  static final _t = Translations.byText("en_us") +
+  static final _t = Translations.byText("en-US") +
       {
-        "en_us": "Cancel",
-        "it_it": "Annulla",
+        "en-US": "Cancel",
+        "it-IT": "Annulla",
       } +
       {
-        "en_us": "Enter text",
-        "it_it": "Inserisci il testo",
+        "en-US": "Enter text",
+        "it-IT": "Inserisci il testo",
       } +
       {
-        "en_us": "Confirm delete?",
-        "it_it": "Confermi la cancellazione?",
+        "en-US": "Confirm delete?",
+        "it-IT": "Confermi la cancellazione?",
       } +
       {
-        "en_us": "Barcode not allowed.",
-        "it_it": "Barcode non disponibile.",
+        "en-US": "Barcode not allowed.",
+        "it-IT": "Barcode non disponibile.",
       } +
       {
-        "en_us": "Yes",
-        "it_it": "Si",
+        "en-US": "Yes",
+        "it-IT": "Si",
       };
 
   String get i18n => localize(this, _t);

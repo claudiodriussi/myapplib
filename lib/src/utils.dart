@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
-import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
+// import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 
 import "my.i18n.dart";
 import 'appvars.dart';
@@ -32,7 +32,7 @@ Future<void> saveTextFile(File file, String text) async {
 
 /// read a json file and return it as json
 ///
-Future<dynamic> readJson<Map>(path, name) async {
+Future<dynamic> readJson<Map>(path, {name=''}) async {
   File file = File(p.join(path, name));
   String? json = await loadTextFile(file);
   try {
@@ -66,6 +66,21 @@ num calcDiscount(num value, List discounts) {
   return value;
 }
 
+/// check if a variable is empty
+///
+/// it recognize numbers, null, booleans and all objects that implements
+/// isEmpty property. For all others objects return false.
+///
+bool empty(var v) {
+  if (v == null) return true;
+  if (v is num && v == 0) return true;
+  if (v is bool) return !v;
+  try {
+    if (v.isEmpty) return true;
+  } catch (_) {}
+  return false;
+}
+
 /// empty values of a map.
 ///
 /// Recognize standard dart types, objects are lived untouched, DateTime are
@@ -93,7 +108,6 @@ void map2empty(Map map) {
         map[k] = {};
         break;
       case DateTime:
-        // map[k] = DateTime.now();
         map[k] = null;
         break;
       default:
@@ -244,23 +258,23 @@ Future<String> textBox(
   _textFieldController.text = result;
   IconButton? bars;
 
-  if (barcode && app.isMobile()) {
-    bars = IconButton(
-      onPressed: () async {
-        String barcodeScanRes;
-        try {
-          barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
-              '#ff6666', 'Annulla', true, ScanMode.BARCODE);
-          if (barcodeScanRes != '-1') {
-            _textFieldController.text = barcodeScanRes;
-          }
-        } catch (_) {
-          await alertBox(context, text: "Barcode not allowed.".i18n);
-        }
-      },
-      icon: const Icon(Icons.barcode_reader), // Icons.line_weight
-    );
-  }
+  // if (barcode && app.isMobile()) {
+  //   bars = IconButton(
+  //     onPressed: () async {
+  //       String barcodeScanRes;
+  //       try {
+  //         barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
+  //             '#ff6666', 'Annulla', true, ScanMode.BARCODE);
+  //         if (barcodeScanRes != '-1') {
+  //           _textFieldController.text = barcodeScanRes;
+  //         }
+  //       } catch (_) {
+  //         await alertBox(context, text: "Barcode not allowed.".i18n);
+  //       }
+  //     },
+  //     icon: const Icon(Icons.barcode_reader), // Icons.line_weight
+  //   );
+  // }
 
   await showDialog<String>(
     context: context,
@@ -317,7 +331,6 @@ void formGroupReset(formGroup, {List<String>? exceptFields}) {
           formGroup.control(key).value = false;
           break;
         case FormControl<DateTime>:
-          // formGroup.control(key).value = DateTime.now();
           formGroup.control(key).value = null;
           break;
         default:
