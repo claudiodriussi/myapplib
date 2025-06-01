@@ -307,34 +307,38 @@ Future<String> textBox(
   return result;
 }
 
+
 /// set default value to reactive_forms [FormGroup] fields.
 ///
 /// all fields not presents in [exceptFields] or if its value is [null] are
-/// set to '' (empty string), objects and dates are set to null
+/// set to '' (empty string) for String, 0 for int/double, false for bool.
+/// DateTime and other objects are set to null.
 ///
-void formGroupReset(formGroup, {List<String>? exceptFields}) {
+void formGroupReset(FormGroup formGroup, {List<String>? exceptFields}) {
   exceptFields ??= [];
   for (String key in formGroup.controls.keys) {
     if (key.startsWith('_')) continue;
-    if (!exceptFields.contains(key) || formGroup.value[key] == null) {
-      switch (formGroup.control(key).runtimeType) {
-        case FormControl<String>:
-          formGroup.control(key).value = '';
-          break;
-        case FormControl<int>:
-          formGroup.control(key).value = 0;
-          break;
-        case FormControl<double>:
-          formGroup.control(key).value = 0.0;
-          break;
-        case FormControl<bool>:
-          formGroup.control(key).value = false;
-          break;
-        case FormControl<DateTime>:
-          formGroup.control(key).value = null;
-          break;
-        default:
-          formGroup.control(key).value = null;
+
+    final control = formGroup.control(key);
+
+    if (!exceptFields.contains(key) || control.value == null) {
+      if (control is FormControl<String>) {
+        control.value = '';
+      } else if (control is FormControl<int>) {
+        control.value = 0;
+      } else if (control is FormControl<double>) {
+        control.value = 0.0;
+      } else if (control is FormControl<bool>) {
+        control.value = false;
+      } else if (control is FormControl<DateTime>) {
+        control.value = null;
+      } else if (control is FormControl<Object>) {
+        control.value = null;
+      } else {
+        if (control is FormControl) {
+             control.value = null;
+        }
+        print('Type ${control.runtimeType} of control $key not handled.');
       }
     }
   }
