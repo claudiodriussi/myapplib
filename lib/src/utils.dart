@@ -4,7 +4,6 @@ import 'dart:convert';
 import 'package:path/path.dart' as p;
 import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
-// import 'package:flutter_barcode_scanner/flutter_barcode_scanner.dart';
 
 import "my.i18n.dart";
 import 'appvars.dart';
@@ -32,7 +31,7 @@ Future<void> saveTextFile(File file, String text) async {
 
 /// read a json file and return it as json
 ///
-Future<dynamic> readJson<Map>(path, {name=''}) async {
+Future<dynamic> readJson<Map>(path, {name = ''}) async {
   File file = File(p.join(path, name));
   String? json = await loadTextFile(file);
   try {
@@ -136,7 +135,8 @@ Future<void> navPush(context, page, {onStart}) async {
 /// decoration: inputDecoration('my field', search: () {},
 /// decoration: inputDecoration('my field', popMenu: ['one','two'], search: (v) {},
 ///
-InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon, info, prefixIcon}) {
+InputDecoration inputDecoration(var label,
+    {search, popMenu, suffixIcon, info, prefixIcon}) {
   OutlineInputBorder? border;
   Widget? icon;
   Widget? infoIcon;
@@ -243,38 +243,18 @@ Future<bool> alertBox(
 
 /// textBox
 ///
-/// let the user to enter a string. If the app is on mobile platform the field
-/// can be read from barcode scanner emulate4d with the camera.
+/// let the user to enter a string.
 ///
 Future<String> textBox(
   BuildContext context, {
   String text = 'Enter text',
   String title = '',
   String value = '',
-  bool barcode = false,
 }) async {
   TextEditingController _textFieldController = TextEditingController();
   String result = value;
   _textFieldController.text = result;
   IconButton? bars;
-
-  // if (barcode && app.isMobile()) {
-  //   bars = IconButton(
-  //     onPressed: () async {
-  //       String barcodeScanRes;
-  //       try {
-  //         barcodeScanRes = await FlutterBarcodeScanner.scanBarcode(
-  //             '#ff6666', 'Annulla', true, ScanMode.BARCODE);
-  //         if (barcodeScanRes != '-1') {
-  //           _textFieldController.text = barcodeScanRes;
-  //         }
-  //       } catch (_) {
-  //         await alertBox(context, text: "Barcode not allowed.".i18n);
-  //       }
-  //     },
-  //     icon: const Icon(Icons.barcode_reader), // Icons.line_weight
-  //   );
-  // }
 
   await showDialog<String>(
     context: context,
@@ -307,7 +287,6 @@ Future<String> textBox(
   return result;
 }
 
-
 /// set default value to reactive_forms [FormGroup] fields.
 ///
 /// all fields not presents in [exceptFields] or if its value is [null] are
@@ -336,7 +315,7 @@ void formGroupReset(FormGroup formGroup, {List<String>? exceptFields}) {
         control.value = null;
       } else {
         if (control is FormControl) {
-             control.value = null;
+          control.value = null;
         }
         print('Type ${control.runtimeType} of control $key not handled.');
       }

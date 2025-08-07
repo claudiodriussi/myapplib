@@ -27,6 +27,7 @@ class SqlDB {
       await checkAssets(fileName);
       db = await sqflite.openDatabase(fileName);
     } else {
+      // also other platforms need copy form assets
       db = await databaseFactoryFfi.openDatabase(fileName);
     }
   }
@@ -297,4 +298,47 @@ class IdSearchFld {
     this.destination,
     this.description,
   });
+}
+
+
+// ----------------------------------------------------------------------------
+// utility
+// ----------------------------------------------------------------------------
+
+/// Provide a standard way to get groups of strings from DB to use as popMenu
+///
+/// Parameters are <sqldb> <tableName>, <group> and <description>. Load popStrings at
+/// start of program with:
+///   popStrings = await DBPopStrings(sqldb, 'dsc_table', 'group', 'description');
+/// then you can get the the lists of your popMenu with:
+///   popMenu: popStringsGroup('colors'),
+///
+Future<Map<String, List<String>>> DBPopStrings(
+  SqlDB sqldb,
+  String tableName,
+  String group,
+  String description,
+) async {
+  Map<String, List<String>> strings = {};
+
+  List q = await sqldb.db.query(tableName);
+  for (var row in q) {
+    if (!strings.containsKey(row[group])) strings[row[group]] = [];
+    strings[row[group]]?.add(row[description]);
+  }
+  return strings;
+}
+
+/// Return a list of strings to be used as popMenu
+///
+/// strings are contained in a Map which can be loaded from a DB and/or integrated
+/// adding static list of strings:
+///   popStrings = await DBPopStrings('dsc_table', 'group', 'description');
+///   popStrings['colors'] = ['white', 'yellow', 'blue']
+/// then use in your widget with:
+///   popMenu: popStringsGroup('colors'),
+///
+List<String>? popStringsGroup(key, popStrings) {
+  if (!popStrings.containsKey(key)) return [];
+  return popStrings[key];
 }

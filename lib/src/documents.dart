@@ -6,10 +6,87 @@ import 'package:hive/hive.dart';
 import "my.i18n.dart";
 import 'utils.dart';
 
+/// Common FormGroup utilities for Document, HiveTable, and HiveMap
+/// Provides consistent handling of FormGroup operations, type conversions, and JSON serialization
+mixin FormsMixin on ChangeNotifier {
+
+  /// Assign a value to a ReactiveForm control with automatic type conversion.
+  /// Handles String to DateTime conversion for JSON imports
+  void assignValue(FormControl control, dynamic value) {
+    try {
+      if (control is FormControl<DateTime> && value is String) {
+        control.value = DateTime.parse(value);
+      } else {
+        control.value = value;
+      }
+    } catch (_) {
+      // Keep default/current value on conversion error - more robust than setting null
+    }
+  }
+
+  /// Prepare a value to be encoded in JSON.
+  /// DateTime converted to ISO String, others handled appropriately
+  dynamic toJsonVar(dynamic value) {
+    if (value is String || value is num || value == null) return value;
+    if (value is DateTime) return value.toIso8601String();
+    try {
+      return value.toJson();
+    } catch (e) {
+      return value.toString();
+    }
+  }
+
+  /// Reset FormGroup with optional field exclusions and automatic change notification
+  Future<void> resetFormGroup(FormGroup formGroup, {List<String>? exceptFields}) async {
+    formGroupReset(formGroup, exceptFields: exceptFields);
+    notifyListeners();
+  }
+
+  /// Clone FormGroup with empty values for search forms
+  /// Useful for creating search forms from existing data schemas
+  FormGroup cloneFormGroupEmpty(FormGroup source) {
+    final Map<String, AbstractControl> controls = {};
+    source.controls.forEach((key, control) {
+      if (control is FormControl<String>) {
+        controls[key] = FormControl<String>();
+      } else if (control is FormControl<int>) {
+        controls[key] = FormControl<int>();
+      } else if (control is FormControl<double>) {
+        controls[key] = FormControl<double>();
+      } else if (control is FormControl<DateTime>) {
+        controls[key] = FormControl<DateTime>();
+      } else {
+        controls[key] = FormControl();
+      }
+    });
+    return FormGroup(controls);
+  }
+
+  /// Convert FormGroup to Map excluding hidden fields (fields starting with "_")
+  Map<String, dynamic> toMapExcludeHidden(FormGroup formGroup) {
+    final Map<String, dynamic> result = {};
+    for (String key in formGroup.controls.keys) {
+      if (key.startsWith('_')) continue;
+      result[key] = toJsonVar(formGroup.control(key).value);
+    }
+    return result;
+  }
+
+  /// Load Map values into FormGroup, excluding hidden fields
+  void fromMapExcludeHidden(FormGroup formGroup, Map<String, dynamic> data) {
+    for (String key in formGroup.controls.keys) {
+      if (key.startsWith('_')) continue;
+      if (data.containsKey(key)) {
+        assignValue(formGroup.control(key) as FormControl, data[key]);
+      }
+    }
+  }
+}
+
 /// uses a hive box to store key values Fields integrated with reactive_forms
 /// and provider
 ///
-class HiveMap with ChangeNotifier {
+class HiveMap with ChangeNotifier, FormsMixin {
   final Box? box;
   FormGroup fgMap = FormGroup({});
 
@@ -18,19 +95,20 @@ class HiveMap with ChangeNotifier {
   }
 
   Future<void> reset({List<String>? exceptFields}) async {
-    formGroupReset(fgMap, exceptFields: exceptFields);
-    notifyListeners();
+    await resetFormGroup(fgMap, exceptFields: exceptFields);
+    // notifyListeners() already called by resetFormGroup
   }
 
   /// the fields key starting with "_" are not loaded
   Future<void> load() async {
-    formGroupReset(fgMap);
+    await resetFormGroup(fgMap); // Use MixIn method
     for (String key in fgMap.controls.keys) {
       if (key.startsWith('_')) continue;
       try {
         fgMap.control(key).value = box!.get(key);
       } catch (_) {}
     }
+    // Additional notifyListeners() in case values changed after resetFormGroup
     notifyListeners();
   }
 
@@ -63,7 +141,7 @@ class HiveMap with ChangeNotifier {
 /// The class contains methods to manipulate data ahd to notify changes to
 /// provider.
 ///
-class Document with ChangeNotifier {
+class Document with ChangeNotifier, FormsMixin {
   dynamic key; // document key (null = new document)
   bool modified = false; // the document was modified, should be saved
   bool editOk = true; // the form is validated, must be false before editing
@@ -81,6 +159,21 @@ class Document with ChangeNotifier {
     docRows[key] = ListRows(fgRow, document: this);
   }
 
+  /// convenient function to get a ListRows.
+  ///
+  ListRows rows({key = 'rows'}) => docRows[key]!;
+
+  /// check if the document was modified.
+  /// return true if the header or a row in each ListRows defined id docRows
+  /// are modified
+  ///
+  bool get isModified {
+    if (!modified) {
+      modified = docRows.values.any((row) => row.modified);
+    }
+    return modified;
+  }
+
   /// call the editFn to modify the header.
   ///
   Future<void> editHeader({required editFn}) async {
@@ -96,11 +189,17 @@ class Document with ChangeNotifier {
   ///
   Future<void> reset({List<String>? exceptFields}) async {
     formGroupReset(fgHeader, exceptFields: exceptFields);
-    // rows = [];
     docRows.forEach((k, v) => v.reset());
     key = null;
     modified = false;
     notifyListeners();
+  }
+
+  /// this is an abstract method, derived classes can handle initializations
+  /// before adding a new document. The context parameter can be used to
+  /// interact with user, i.e. using un AlertBox
+  Future<bool> newDocument(context) async {
+    return true;
   }
 
   Future<void> save() async {
@@ -146,9 +245,8 @@ class Document with ChangeNotifier {
     if (value != null && value['class'] == runtimeType.toString()) {
       key = value['key'];
       try {
-        // if the assignment fail, I will try to convert a string in DateTime
-        // and reassign to the control.
-        value['header'].forEach((k, v) => _assignValue(fgHeader.control(k), v));
+        // Use FormsMixin assignValue for consistent type conversion
+        value['header'].forEach((k, v) => assignValue(fgHeader.control(k) as FormControl, v));
       } catch (_) {}
 
       // add all row lists to the map
@@ -174,48 +272,20 @@ class Document with ChangeNotifier {
   String toJson({data}) {
     data ??= toMap();
 
-    data['key'] = _toJsonVar(data['key']);
-    data['header'].forEach((k, v) => data['header'][k] = _toJsonVar(v));
+    data['key'] = toJsonVar(data['key']);
+    data['header'].forEach((k, v) => data['header'][k] = toJsonVar(v));
 
     // convert all values in list to the format serializable in json
     docRows.forEach((k, v) {
       for (var row in data[k]) {
-        row.forEach((kk, v) => row[kk] = _toJsonVar(v));
+        row.forEach((kk, v) => row[kk] = toJsonVar(v));
       }
     });
 
-    return jsonEncode(data);
+    return const JsonEncoder.withIndent('  ').convert(data);
   }
 
   void notify() => notifyListeners();
-}
-
-/// prepare a value to be encoded in json.
-///
-/// data types different from String, num and null are converted to string.
-/// often used to convert DataTime values
-///
-dynamic _toJsonVar(value) {
-  if (value is String || value is num || value == null) return value;
-  return value.toString();
-}
-
-/// assign a value to a ReactiveForm control.
-///
-/// data are usually coming from a Map and should be of the correct type.
-/// if data are coming from a json string, dates are represented as String
-/// and then we try to decode it.
-///
-void _assignValue(control, value) {
-  try {
-    if (control is FormControl<DateTime> && value is String) {
-      control.value = DateTime.parse(value);
-    } else {
-      control.value = value;
-    }
-  } catch (_) {
-    control.value = null;
-  }
 }
 
 /// handle a list of rows within a Document or stand alone.
@@ -231,6 +301,17 @@ class ListRows {
   int curRow = -1; // current row, -1 for new rows
   FormGroup fgRow = FormGroup({}); // all fields of each row
   Document? doc; // if the row belong to a document, we can notify listeners.
+
+  /// Filter callback for displaying a subset of rows
+  bool Function(Map<String, dynamic> row)? _filterCallback;
+
+  /// Get rows for display - uses filter if set, otherwise returns all rows
+  List get displayRows => _filterCallback == null 
+    ? rows 
+    : rows.where((row) => _filterCallback!(Map<String, dynamic>.from(row))).toList();
+
+  /// Get count of rows for display
+  int get displayCount => displayRows.length;
 
   /// initialize a ListRows. The document parameter is optional, this mean
   /// that the rows can belong to a Document, or used stand alone.
@@ -251,6 +332,19 @@ class ListRows {
     modified = false;
     editOk = true;
     curRow = -1;
+    _filterCallback = null; // Clear any filter
+  }
+
+  /// Set filter callback for displaying subset of rows
+  /// The callback should return true for rows to display
+  void setFilter(bool Function(Map<String, dynamic> row)? filter) {
+    _filterCallback = filter;
+    if (doc != null) doc!.notify(); // Notify Document to refresh UI
+  }
+
+  /// Clear current filter - show all rows
+  void clearFilter() {
+    setFilter(null);
   }
 
   /// return the list of rows with the exclusion of hidden fields
@@ -393,7 +487,6 @@ mixin Document2Hive on Document {
     var value = _box?.get(key);
     fromMap(value);
   }
-
 }
 
 /// the default submit button used with reactive_forms
