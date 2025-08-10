@@ -308,7 +308,7 @@ class ListRows {
   /// Get rows for display - uses filter if set, otherwise returns all rows
   List get displayRows => _filterCallback == null 
     ? rows 
-    : rows.where((row) => _filterCallback!(Map<String, dynamic>.from(row))).toList();
+    : rows.where((row) => _filterCallback!(row)).toList();
 
   /// Get count of rows for display
   int get displayCount => displayRows.length;
