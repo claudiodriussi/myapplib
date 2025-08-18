@@ -197,9 +197,10 @@ InputDecoration inputDecoration(var label,
   return input;
 }
 
-/// short code for an alert box
+/// Short code for an alert box with scrollable content support
 ///
-/// with one button return always false with two buttons return a bool value
+/// With one button return always false, with two buttons return a bool value.
+/// Automatically uses more screen space and adds scrolling for long texts.
 ///
 Future<bool> alertBox(
   BuildContext context, {
@@ -230,11 +231,29 @@ Future<bool> alertBox(
     return ll;
   }
 
+  // Content widget with automatic scroll support for long texts
+  Widget contentWidget;
+  if (text.length > 200 || text.split('\n').length > 6) {
+    // Long text: use generous screen space (70%) with scrolling
+    contentWidget = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7, // 70% screen height for better readability
+        maxWidth: MediaQuery.of(context).size.width * 0.8,   // 80% screen width
+      ),
+      child: SingleChildScrollView(
+        child: Text(text),
+      ),
+    );
+  } else {
+    // Normal text: keep default behavior (auto-sizing)
+    contentWidget = Text(text);
+  }
+
   await showDialog<String>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
-      title: Text(title),
-      content: Text(text),
+      title: title.isNotEmpty ? Text(title) : null,
+      content: contentWidget,
       actions: makeButtons(),
     ),
   );
