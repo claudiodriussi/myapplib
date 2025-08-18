@@ -50,9 +50,15 @@ class AppVars {
   }
 
   /// save settings to hive box
+  /// if key and value are provided, saves only that single setting
   ///
-  void saveSettings() {
-    hiveBoxes['settings']!.putAll(settings);
+  void saveSettings({String? key, dynamic value}) {
+    if (key != null) {
+      settings[key] = value;
+      hiveBoxes['settings']!.put(key, value);
+    } else {
+      hiveBoxes['settings']!.putAll(settings);
+    }
   }
 
   /// start the app, set app folders and init the settings
