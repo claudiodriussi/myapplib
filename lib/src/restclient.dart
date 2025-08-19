@@ -28,6 +28,7 @@ class RestClient {
   final String user;
   final String password;
   final String folder;
+  final String prefix;
 
   final Map<String, String> endpoints;
   final String workPath;
@@ -39,12 +40,16 @@ class RestClient {
 
   /// Constructor
   /// Creates local folders and initializes configuration
+  /// [prefix] is optional and will be added between server:port and endpoints
+  /// Example: server="http://192.168.0.71", port=5000, prefix="local" 
+  /// Results in: http://192.168.0.71:5000/local/api/v1/token
   RestClient({
     required this.server,
     required this.port,
     required this.user,
     required this.password,
     required this.folder,
+    this.prefix = '',
     this.context,
     this.endpoints = const {
       'token': '/api/v1/token',
@@ -104,11 +109,19 @@ class RestClient {
     return "${prefix}_$timestamp.json";
   }
 
-  /// Compose server address with port
+  /// Compose server address with port and optional prefix
   String getAddress() {
     String address = server;
     if (port != 0 && port != 80) {
       address = "$address:$port";
+    }
+    if (prefix.isNotEmpty) {
+      // Ensure prefix starts with / but doesn't end with /
+      String normalizedPrefix = prefix.startsWith('/') ? prefix : '/$prefix';
+      if (normalizedPrefix.endsWith('/')) {
+        normalizedPrefix = normalizedPrefix.substring(0, normalizedPrefix.length - 1);
+      }
+      address = "$address$normalizedPrefix";
     }
     return address;
   }
