@@ -1,0 +1,7 @@
+{
+    "dart.analysisExcludedFolders": [
+        "."
+    ],
+    "dart.showTodos": false,
+    "dart.analysisServerFolding": false
+}

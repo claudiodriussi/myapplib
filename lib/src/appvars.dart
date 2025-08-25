@@ -3,6 +3,7 @@ import 'package:path/path.dart' as p;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:hive/hive.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 
 // app is a global variable used as singleton
 final AppVars app = AppVars();
@@ -92,13 +93,14 @@ class AppVars {
     // retrive settings from hive
     settings = hiveBoxes['settings']!.toMap();
     // set some standard settings
-    defaultSetting('deviceInfo', {});
+    defaultSetting('deviceInfo', await setDeviceInfo());
     defaultSetting('deviceId', 'ok');
     defaultSetting('activationKey', '');
     defaultSetting('activationUser', '');
     defaultSetting('borderInput', 1);
     defaultSetting('themeColor', 0xFF673AB7); // deepPurple
     defaultSetting('darkTheme', false);
+
     // store settings again to hive
     saveSettings();
   }
@@ -112,6 +114,43 @@ class AppVars {
       path = extDir.substring(0, i);
     }
     return path;
+  }
+
+  /// Normalizes device info into standardized format
+  /// Supports Android, iOS and Desktop with uniform structure: {model, brand, device}
+  /// Returns the Map to be used with defaultSetting
+  Future<Map<String, String>> setDeviceInfo() async {
+    Map<String, String> deviceInfo = {};
+
+    if (isMobile()) {
+      DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
+
+      if (Platform.isAndroid) {
+        AndroidDeviceInfo androidInfo = await deviceInfoPlugin.androidInfo;
+        deviceInfo = {
+          'model': androidInfo.model,
+          'brand': androidInfo.brand,
+          'device': androidInfo.device,
+        };
+      } else if (Platform.isIOS) {
+        IosDeviceInfo iosInfo = await deviceInfoPlugin.iosInfo;
+        deviceInfo = {
+          'model': iosInfo.model,
+          'brand': 'Apple',
+          'device': iosInfo.model,
+        };
+      }
+    } else {
+      // Desktop/Web - basic implementation
+      String platform = Platform.operatingSystem;
+      deviceInfo = {
+        'model': Platform.localHostname,
+        'brand': platform,
+        'device': platform,
+      };
+    }
+
+    return deviceInfo;
   }
 
   /// default homeDir is on the root of external storage plus the appName

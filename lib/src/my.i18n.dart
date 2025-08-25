@@ -21,6 +21,14 @@ extension Localization on String {
       {
         "en-US": "Yes",
         "it-IT": "Si",
+      } +
+      {
+        "en-US": "Error in field '\$campo'",
+        "it-IT": "Errore nel campo '\$campo'",
+      } +
+      {
+        "en-US": "Check entered data!",
+        "it-IT": "Controlla i dati inseriti!",
       };
 
   String get i18n => localize(this, _t);

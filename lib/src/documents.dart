@@ -174,6 +174,17 @@ class Document with ChangeNotifier, FormsMixin {
     return modified;
   }
 
+  /// check if document has any changes including form fields
+  /// return true if header form is dirty, document is modified, or any rows are modified
+  ///
+  bool get hasAnyChanges {
+    // Check if form fields have been modified (dirty)
+    if (!fgHeader.pristine) return true;
+    
+    // Check document modified flag and rows
+    return isModified;
+  }
+
   /// call the editFn to modify the header.
   ///
   Future<void> editHeader({required editFn}) async {
@@ -306,8 +317,8 @@ class ListRows {
   bool Function(Map<String, dynamic> row)? _filterCallback;
 
   /// Get rows for display - uses filter if set, otherwise returns all rows
-  List get displayRows => _filterCallback == null 
-    ? rows 
+  List get displayRows => _filterCallback == null
+    ? rows
     : rows.where((row) => _filterCallback!(row)).toList();
 
   /// Get count of rows for display
@@ -489,21 +500,47 @@ mixin Document2Hive on Document {
   }
 }
 
+/// Returns the name of the first field with validation errors
+/// Returns null if no errors found
+String? getFirstErrorField(FormGroup formGroup) {
+  for (var entry in formGroup.controls.entries) {
+    if (entry.value.hasErrors) {
+      return entry.key;
+    }
+  }
+  return null;
+}
+
+/// Default error handler for form validation failures
+/// Shows an alert with field-specific or generic error message
+Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) async {
+  String? campo = getFirstErrorField(formGroup);
+  String testo = campo != null 
+      ? "Error in field '\$campo'".i18n.replaceAll('\$campo', campo)
+      : "Check entered data!".i18n;
+  
+  await alertBox(
+    context,
+    text: testo,
+  );
+}
+
 /// the default submit button used with reactive_forms
 ///
-ReactiveButton submitButton({text = 'Ok', onOk}) {
+ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
   var rb = ReactiveButton();
   rb.text = text;
   rb.onOk = onOk;
+  rb.onError = onError;
   return rb;
 }
 
 /// a ReactiveButton is a button that validate a reactive_forms form and pop it.
-// ignore: must_be_immutable
 class ReactiveButton extends StatelessWidget {
   ReactiveButton({super.key});
   String text = "Send";
   Function? onOk;
+  Function? onError;
   @override
   Widget build(BuildContext context) {
     final form = ReactiveForm.of(context);
@@ -511,9 +548,15 @@ class ReactiveButton extends StatelessWidget {
       if (form != null && form.valid) {
         if (onOk != null) await onOk!();
         Navigator.pop(context);
+      } else {
+        // Form validation failed, execute error callback or use default
+        if (onError != null) {
+          await onError!();
+        } else if (form != null && form is FormGroup) {
+          await defaultFormErrorHandler(context, form as FormGroup);
+        }
       }
     }
-
     return ElevatedButton(
       onPressed: valid,
       child: Text(text),
