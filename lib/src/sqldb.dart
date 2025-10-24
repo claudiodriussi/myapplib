@@ -101,18 +101,34 @@ class SqlDB {
   }
 }
 
-/// uses a [FormGroup] to automate queries in a [Database]
+/// JOIN configuration class
+class _JoinDef {
+  final String table, on, type;
+  final List<String> select;
+  _JoinDef(this.table, this.on, this.type, this.select);
+}
+
+/// Quick filter configuration class  
+class _QuickFilter {
+  final String where;
+  final List<dynamic> Function()? args;
+  final bool Function()? condition;
+  final String? icon;
+  _QuickFilter(this.where, this.args, this.condition, this.icon);
+}
+
+/// Uses a [FormGroup] to automate queries in a [SqlDB] database
 ///
-/// the names of controls of the [FormGroup] must match the names of Database
-/// fields, or start with a dot '.' and the type must be String. In this way
-/// query can be automated using the "LIKE UPPER(?)" sql clause on String
-/// fields, and the equal clause on the other fields.
+/// The names of controls of the [FormGroup] must match the names of database
+/// fields, or start with an underscore '_' for utility fields. Fields matching
+/// database columns are automatically handled using "LIKE UPPER(?)" for String
+/// fields and "=" for other types.
 ///
-/// Fields starting with dot can be used to give the [extraWhere] clause to the
-/// [query()] method.
+/// Fields starting with underscore '_' are ignored by automatic query generation
+/// and can be used for custom logic with [extraWhere] parameter.
 ///
-/// the result query can be used to popolate a ListView. The field isSearch
-/// can be used to say to the ListView if add the button used to chose the row.
+/// The result query can be used to populate a ListView. The [isSearch] field
+/// indicates if the ListView should show selection buttons for row picking.
 ///
 class SearchForm with ChangeNotifier {
   SqlDB sqldb;
@@ -124,6 +140,9 @@ class SearchForm with ChangeNotifier {
   bool isSearch = true;
   dynamic result;
   dynamic q = [];
+  
+  // JOIN functionality 
+  final Map<String, _JoinDef> _joins = {};
 
   SearchForm(
       {required this.sqldb,
@@ -137,6 +156,18 @@ class SearchForm with ChangeNotifier {
 
   /// set value of a field in the search form group
   void setVal(String key, var value) => group.control(key).value = value;
+
+  /// Add JOIN to query with fluent API
+  SearchForm join(
+    String alias, {
+    required String table,
+    required String on,
+    String type = 'LEFT',
+    List<String>? select,
+  }) {
+    _joins[alias] = _JoinDef(table, on, type, select ?? []);
+    return this;
+  }
 
   /// perform a progressive search.
   /// Once the len of string is almost [numChars] length call the query to
@@ -161,14 +192,23 @@ class SearchForm with ChangeNotifier {
   ///
   Future<List<Map<String, Object?>>> query(
       {String? extraWhere, List<String>? extraArgs}) async {
+    
+    if (_joins.isEmpty) {
+      // Simple query without JOINs (original logic)
+      return _simpleQuery(extraWhere: extraWhere, extraArgs: extraArgs);
+    } else {
+      // Complex query with JOINs
+      return _joinQuery(extraWhere: extraWhere, extraArgs: extraArgs);
+    }
+  }
+
+  Future<List<Map<String, Object?>>> _simpleQuery({String? extraWhere, List<String>? extraArgs}) async {
     String where = extraWhere ?? '';
     List<String> args = extraArgs ?? [];
 
-    // the keys which starts with a dot '.' are not handled automatically.
-    // the strings are searched with like, the other types are searched for
-    // equality
+    // Build WHERE conditions from FormGroup
     for (String key in group.controls.keys) {
-      if (key.startsWith('.')) continue;
+      if (key.startsWith('_')) continue;
       if (group.value[key].runtimeType == String) {
         if (group.value[key] != '') {
           where += where == '' ? '' : ' AND ';
@@ -185,20 +225,110 @@ class SearchForm with ChangeNotifier {
     }
 
     if (where.isEmpty) {
-      q = await sqldb.db
-          .query(table, columns: columns, orderBy: orderBy, limit: limit);
+      q = await sqldb.db.query(table, columns: columns, orderBy: orderBy, limit: limit);
     } else {
-      q = await sqldb.db.query(table,
-          columns: columns,
-          where: where,
-          whereArgs: args,
-          orderBy: orderBy,
-          limit: limit);
+      q = await sqldb.db.query(table, columns: columns, where: where, whereArgs: args, orderBy: orderBy, limit: limit);
     }
 
     notifyListeners();
     result = null;
     return q;
+  }
+
+  Future<List<Map<String, Object?>>> _joinQuery({String? extraWhere, List<String>? extraArgs}) async {
+    String sql = _buildJoinQuery();
+    List<String> args = _buildJoinArgs(extraWhere, extraArgs);
+    String whereClause = _buildJoinWhereClause();
+
+    if (extraWhere != null && extraWhere.isNotEmpty) {
+      if (whereClause.isNotEmpty) {
+        whereClause += ' AND $extraWhere';
+      } else {
+        whereClause = extraWhere;
+      }
+    }
+
+    if (whereClause.isNotEmpty) {
+      sql += ' WHERE $whereClause';
+    }
+
+    if (orderBy != null) sql += ' ORDER BY $orderBy';
+    if (limit != null) sql += ' LIMIT $limit';
+
+    var rawResult = await sqldb.db.rawQuery(sql, args);
+    q = rawResult;
+    notifyListeners();
+    result = null;
+    return rawResult.cast<Map<String, Object?>>();
+  }
+
+  String _buildJoinQuery() {
+    List<String> selectFields = [];
+    selectFields.addAll(columns?.map((c) => '$table.$c') ?? ['$table.*']);
+
+    _joins.forEach((alias, join) {
+      for (String field in join.select) {
+        selectFields.add('${join.table}.$field as ${alias}_$field');
+      }
+    });
+
+    String sql = 'SELECT ${selectFields.join(', ')} FROM $table';
+
+    _joins.forEach((alias, join) {
+      sql += ' ${join.type} JOIN ${join.table} ON $table.${join.on} = ${join.table}.id';
+    });
+
+    return sql;
+  }
+
+  List<String> _buildJoinArgs(String? extraWhere, List<String>? extraArgs) {
+    List<String> args = extraArgs ?? [];
+
+    // Arguments from FormGroup
+    for (String key in group.controls.keys) {
+      if (key.startsWith('_')) continue;
+      var value = group.value[key];
+
+      if (value is String) {
+        if (value.isNotEmpty) {
+          args.add('%${value.toUpperCase()}%');
+        }
+      } else if (value != null && value != 0) {
+        args.add(value.toString());
+      }
+    }
+
+    return args;
+  }
+
+  String _buildJoinWhereClause() {
+    List<String> conditions = [];
+
+    // Conditions from FormGroup
+    for (String key in group.controls.keys) {
+      if (key.startsWith('_')) continue;
+      var value = group.value[key];
+      if (value is String) {
+        if (value.isNotEmpty) {
+          conditions.add('$table.$key LIKE UPPER(?)');
+        }
+      } else if (value != null && value != 0) {
+        conditions.add('$table.$key = ?');
+      }
+    }
+
+    return conditions.join(' AND ');
+  }
+
+  /// Update query results with custom data and notify listeners
+  ///
+  /// Use this method when you need to set query results from a custom SQL query
+  /// instead of using the standard [query()] method. Automatically resets [result]
+  /// and notifies listeners to update the UI.
+  void updateResults(List<Map<String, Object?>> newResults) {
+    q = newResults;
+    result = null;
+    notifyListeners();
   }
 
   /// once a row of the query is selected, the id is put on result field, and
@@ -209,6 +339,141 @@ class SearchForm with ChangeNotifier {
     Navigator.pop(context);
   }
 }
+
+/// Enhanced search form with quick filters
+///
+/// Extends [SearchForm] with quick filter management and advanced UI generation.
+/// Inherits all JOIN functionality from the parent class.
+///
+/// Additional features beyond [SearchForm]:
+/// - Quick filters with conditional display via [quickFilter()] method
+/// - Automatic UI generation for quick filters via [buildQuickFilters()]
+/// - Dynamic filter activation/deactivation
+///
+class SearchQuery extends SearchForm {
+  // Quick filters functionality
+  final Map<String, _QuickFilter> _quickFilters = {};
+  final List<String> _activeFilters = [];
+
+  SearchQuery({
+    required SqlDB sqldb,
+    required String table,
+    required FormGroup group,
+    List<String>? columns,
+    String? orderBy,
+    int? limit,
+  }) : super(
+    sqldb: sqldb,
+    table: table,
+    group: group,
+    columns: columns,
+    orderBy: orderBy,
+    limit: limit,
+  );
+
+  /// Override join to return SearchQuery instead of SearchForm for fluent API
+  @override
+  SearchQuery join(String alias, {required String table, required String on, String type = 'LEFT', List<String>? select}) {
+    super.join(alias, table: table, on: on, type: type, select: select);
+    return this;
+  }
+
+  /// Add quick filter button with optional parameters and conditions
+  SearchQuery quickFilter(
+    String name, {
+    required String where,
+    List<dynamic> Function()? args,
+    bool Function()? condition,
+    String? icon,
+  }) {
+    _quickFilters[name] = _QuickFilter(where, args, condition, icon);
+    return this;
+  }
+
+  @override
+  Future<List<Map<String, Object?>>> query({String? extraWhere, List<String>? extraArgs}) async {
+    // Build quick filters WHERE and args
+    String quickFiltersWhere = _buildQuickFiltersWhere();
+    List<String> quickFiltersArgs = _buildQuickFiltersArgs();
+
+    // Combine with extraWhere
+    String combinedWhere = extraWhere ?? '';
+    if (quickFiltersWhere.isNotEmpty) {
+      if (combinedWhere.isNotEmpty) {
+        combinedWhere += ' AND $quickFiltersWhere';
+      } else {
+        combinedWhere = quickFiltersWhere;
+      }
+    }
+
+    // Combine args
+    List<String> combinedArgs = [...(extraArgs ?? []), ...quickFiltersArgs];
+
+    // Call parent query with combined filters
+    return super.query(extraWhere: combinedWhere, extraArgs: combinedArgs);
+  }
+
+  String _buildQuickFiltersWhere() {
+    List<String> conditions = [];
+    for (String filterName in _activeFilters) {
+      var filter = _quickFilters[filterName];
+      if (filter?.condition?.call() ?? true) {
+        conditions.add(filter!.where);
+      }
+    }
+    return conditions.join(' AND ');
+  }
+
+  List<String> _buildQuickFiltersArgs() {
+    List<String> args = [];
+    for (String filterName in _activeFilters) {
+      var filter = _quickFilters[filterName];
+      if (filter?.condition?.call() ?? true) {
+        if (filter!.args != null) {
+          args.addAll(filter.args!().map((e) => e.toString()));
+        }
+      }
+    }
+    return args;
+  }
+
+  /// Toggle quick filter on/off
+  void toggleQuickFilter(String name) {
+    if (_activeFilters.contains(name)) {
+      _activeFilters.remove(name);
+    } else {
+      _activeFilters.add(name);
+    }
+    query();
+  }
+
+  /// Build quick filters UI widget
+  Widget buildQuickFilters() {
+    return Wrap(
+      spacing: 8,
+      children: _quickFilters.entries.map((entry) {
+        bool isActive = _activeFilters.contains(entry.key);
+        bool canShow = entry.value.condition?.call() ?? true;
+
+        if (!canShow) return const SizedBox.shrink();
+
+        return FilterChip(
+          label: Text(entry.key),
+          selected: isActive,
+          onSelected: (_) => toggleQuickFilter(entry.key),
+        );
+      }).toList(),
+    );
+  }
+
+  @override
+  void reset({List<String>? exceptFields}) {
+    super.reset(exceptFields: exceptFields);
+    _activeFilters.clear();
+  }
+}
+
+
 
 /// Implements a search system for values inserted into a reactive_forms
 /// [FormGroup] using an [SqlDB],

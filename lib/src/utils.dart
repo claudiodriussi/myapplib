@@ -197,6 +197,68 @@ InputDecoration inputDecoration(var label,
   return input;
 }
 
+/// Alert dialog that returns the index of the selected button
+///
+/// Returns int index of selected button (0-based).
+/// Returns -1 if dialog is dismissed without selecting a button.
+/// Supports unlimited number of buttons and scrollable content for long texts.
+///
+Future<int> alertChoice(
+  BuildContext context, {
+  String text = 'ToDo!',
+  String title = '',
+  List<String> buttons = const ['Ok'],
+}) async {
+  int result = -1;
+
+  List<Widget> makeButtons() {
+    List<Widget> ll = [];
+    for (int i = 0; i < buttons.length; i++) {
+      ll.add(TextButton(
+        onPressed: () {
+          result = i;
+          Navigator.pop(context);
+        },
+        child: Text(buttons[i])
+      ));
+    }
+    return ll;
+  }
+
+  // Content widget with automatic scroll support for long texts
+  Widget contentWidget;
+  if (text.length > 200 || text.split('\n').length > 6) {
+    // Long text: use generous screen space (70%) with scrolling
+    contentWidget = ConstrainedBox(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.7,
+        maxWidth: MediaQuery.of(context).size.width * 0.8,
+      ),
+      child: SingleChildScrollView(
+        child: Text(text),
+      ),
+    );
+  } else {
+    // Normal text: keep simple without modifications
+    contentWidget = Text(text);
+  }
+
+  await showDialog<String>(
+    context: context,
+    builder: (BuildContext context) => AlertDialog(
+      title: title.isNotEmpty ? Text(title) : null,
+      content: Container(
+        padding: const EdgeInsets.only(top: 8.0),
+        child: contentWidget,
+      ),
+      actions: makeButtons(),
+      actionsPadding: const EdgeInsets.fromLTRB(24.0, 0.0, 24.0, 16.0),
+    ),
+  );
+
+  return result;
+}
+
 /// Short code for an alert box with scrollable content support
 ///
 /// With one button return always false, with two buttons return a bool value.
@@ -209,55 +271,19 @@ Future<bool> alertBox(
   List<String> buttons = const ['Ok'],
   bool firstTrue = false,
 }) async {
-  bool result = false;
+  // Wrapper su alertChoice per mantenere compatibilità
+  int choice = await alertChoice(context, text: text, title: title, buttons: buttons);
 
-  List<Widget> makeButtons() {
-    List<Widget> ll = [
-      TextButton(
-          onPressed: () {
-            result = firstTrue;
-            Navigator.pop(context);
-          },
-          child: Text(buttons[0]))
-    ];
-    if (buttons.length > 1) {
-      ll.add(TextButton(
-          onPressed: () {
-            result = !firstTrue;
-            Navigator.pop(context);
-          },
-          child: Text(buttons[1])));
-    }
-    return ll;
+  if (choice == -1) {
+    return false; // Dialog chiuso senza selezione
   }
 
-  // Content widget with automatic scroll support for long texts
-  Widget contentWidget;
-  if (text.length > 200 || text.split('\n').length > 6) {
-    // Long text: use generous screen space (70%) with scrolling
-    contentWidget = ConstrainedBox(
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7, // 70% screen height for better readability
-        maxWidth: MediaQuery.of(context).size.width * 0.8,   // 80% screen width
-      ),
-      child: SingleChildScrollView(
-        child: Text(text),
-      ),
-    );
+  if (buttons.length == 1) {
+    return false; // Con un pulsante ritorna sempre false
   } else {
-    // Normal text: keep default behavior (auto-sizing)
-    contentWidget = Text(text);
+    // Con due pulsanti: primo pulsante = firstTrue, secondo = !firstTrue
+    return choice == 0 ? firstTrue : !firstTrue;
   }
-
-  await showDialog<String>(
-    context: context,
-    builder: (BuildContext context) => AlertDialog(
-      title: title.isNotEmpty ? Text(title) : null,
-      content: contentWidget,
-      actions: makeButtons(),
-    ),
-  );
-  return result;
 }
 
 /// textBox
@@ -271,11 +297,10 @@ Future<String> textBox(
   String value = '',
 }) async {
   TextEditingController _textFieldController = TextEditingController();
-  String result = value;
-  _textFieldController.text = result;
+  _textFieldController.text = value;
   IconButton? bars;
 
-  await showDialog<String>(
+  String? result = await showDialog<String>(
     context: context,
     builder: (BuildContext context) => AlertDialog(
       title: Text(title),
@@ -289,21 +314,20 @@ Future<String> textBox(
       actions: [
         TextButton(
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(context, value);
           },
           child: Text('Cancel'.i18n),
         ),
         TextButton(
           onPressed: () {
-            result = _textFieldController.text;
-            Navigator.pop(context);
+            Navigator.pop(context, _textFieldController.text);
           },
           child: Text('Ok'.i18n),
         ),
       ],
     ),
   );
-  return result;
+  return result ?? value;
 }
 
 /// set default value to reactive_forms [FormGroup] fields.
@@ -312,10 +336,10 @@ Future<String> textBox(
 /// set to '' (empty string) for String, 0 for int/double, false for bool.
 /// DateTime and other objects are set to null.
 ///
-void formGroupReset(FormGroup formGroup, {List<String>? exceptFields}) {
+void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool includeUnderscore = true}) {
   exceptFields ??= [];
   for (String key in formGroup.controls.keys) {
-    if (key.startsWith('_')) continue;
+    if (!includeUnderscore && key.startsWith('_')) continue;
 
     final control = formGroup.control(key);
 
