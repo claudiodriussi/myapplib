@@ -8,6 +8,51 @@ import 'package:reactive_forms/reactive_forms.dart';
 import "my.i18n.dart";
 import 'appvars.dart';
 
+/// Safely converts any value to string, returns defaultValue if null
+///
+String toStr(Object? value, [String defaultValue = '']) => value?.toString() ?? defaultValue;
+
+/// Get int value or custom default if null/invalid
+///
+/// [defaultValue] Custom default value (defaults to 0)
+int toInt(Object? value, [int defaultValue = 0]) {
+  if (value == null) return defaultValue;
+  if (value is int) return value;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString()) ?? defaultValue;
+}
+
+/// Get double value or custom default if null/invalid
+///
+/// [defaultValue] Custom default value (defaults to 0.0)
+double toDbl(Object? value, [double defaultValue = 0.0]) {
+  if (value == null) return defaultValue;
+  if (value is double) return value;
+  if (value is num) return value.toDouble();
+  return double.tryParse(value.toString()) ?? defaultValue;
+}
+
+/// Get boolean value or custom default if null/invalid
+///
+/// [defaultValue] Custom default value (defaults to false)
+bool toBool(Object? value, [bool defaultValue = false]) {
+  if (value == null) return defaultValue;
+  if (value is bool) return value;
+  if (value is int) return value != 0;
+  final str = value.toString().toLowerCase();
+  return str == 'true' || str == '1' || str == 'yes';
+}
+
+/// generic function for formatting strings
+///
+String f_(String label, dynamic value, {String separator = ': ', String postfix = ''}) {
+  if (value == null) return '';
+  if (value is String && value.isEmpty) return '';
+  return '$label$separator$value$postfix';
+}
+
+
+
 /// Load a text file, if fails return null
 ///
 Future<String?> loadTextFile(File file) async {
@@ -135,8 +180,7 @@ Future<void> navPush(context, page, {onStart}) async {
 /// decoration: inputDecoration('my field', search: () {},
 /// decoration: inputDecoration('my field', popMenu: ['one','two'], search: (v) {},
 ///
-InputDecoration inputDecoration(var label,
-    {search, popMenu, suffixIcon, info, prefixIcon}) {
+InputDecoration inputDecoration(var label, {search, popMenu, suffixIcon, info, prefixIcon}) {
   OutlineInputBorder? border;
   Widget? icon;
   Widget? infoIcon;
@@ -144,8 +188,7 @@ InputDecoration inputDecoration(var label,
   // choose the style of border
   switch (app.settings['borderInput'] ?? 0) {
     case 1:
-      border = const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(4.0)));
+      border = const OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4.0)));
       break;
     default:
   }
@@ -215,12 +258,11 @@ Future<int> alertChoice(
     List<Widget> ll = [];
     for (int i = 0; i < buttons.length; i++) {
       ll.add(TextButton(
-        onPressed: () {
-          result = i;
-          Navigator.pop(context);
-        },
-        child: Text(buttons[i])
-      ));
+          onPressed: () {
+            result = i;
+            Navigator.pop(context);
+          },
+          child: Text(buttons[i])));
     }
     return ll;
   }
@@ -374,8 +416,7 @@ class FloatValidator extends Validator<dynamic> {
   const FloatValidator() : super();
   @override
   Map<String, dynamic>? validate(AbstractControl<dynamic> control) {
-    return (control.value == null) ||
-            !numberRegex.hasMatch(control.value.toString())
+    return (control.value == null) || !numberRegex.hasMatch(control.value.toString())
         ? <String, dynamic>{ValidationMessage.number: true}
         : null;
   }
@@ -415,8 +456,7 @@ class ThemeNotifier with ChangeNotifier {
   ThemeData setTheme() {
     theTheme = ThemeData(
       useMaterial3: true,
-      brightness:
-          app.settings['darkTheme'] ? Brightness.dark : Brightness.light,
+      brightness: app.settings['darkTheme'] ? Brightness.dark : Brightness.light,
       colorSchemeSeed: Color(app.settings['themeColor']),
     );
     return theTheme;

@@ -108,7 +108,7 @@ class _JoinDef {
   _JoinDef(this.table, this.on, this.type, this.select);
 }
 
-/// Quick filter configuration class  
+/// Quick filter configuration class
 class _QuickFilter {
   final String where;
   final List<dynamic> Function()? args;
@@ -140,8 +140,8 @@ class SearchForm with ChangeNotifier {
   bool isSearch = true;
   dynamic result;
   dynamic q = [];
-  
-  // JOIN functionality 
+
+  // JOIN functionality
   final Map<String, _JoinDef> _joins = {};
 
   SearchForm(
@@ -192,7 +192,7 @@ class SearchForm with ChangeNotifier {
   ///
   Future<List<Map<String, Object?>>> query(
       {String? extraWhere, List<String>? extraArgs}) async {
-    
+
     if (_joins.isEmpty) {
       // Simple query without JOINs (original logic)
       return _simpleQuery(extraWhere: extraWhere, extraArgs: extraArgs);
@@ -528,7 +528,7 @@ class IdSearch {
       }
       var s = '';
       for (String fld in dsc) {
-        s += ' ${f.curValue[fld]}';
+        s += ' ${toStr(f.curValue[fld])}';
       }
       fg.control(f.destination!).value = s.trim();
     }
@@ -606,4 +606,18 @@ Future<Map<String, List<String>>> DBPopStrings(
 List<String>? popStringsGroup(key, popStrings) {
   if (!popStrings.containsKey(key)) return [];
   return popStrings[key];
+}
+
+/// Helper function to safely get a popMenu list
+///
+/// Returns a list with an empty string if the list is null or empty.
+/// This ensures inputDecoration always creates a popMenu, allowing
+/// search functions with parameters to work correctly.
+///
+/// Usage:
+///   popMenu: getPopMenu(popStrings['ZONE']),
+///
+List<String> getPopMenu(List<String>? list) {
+  if (list == null || list.isEmpty) return [''];
+  return list;
 }
