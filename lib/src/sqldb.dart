@@ -27,12 +27,13 @@ class SqlDB {
       await checkAssets(fileName);
       db = await sqflite.openDatabase(fileName);
     } else {
-      // also other platforms need copy form assets
+      // Desktop platforms: check and copy from assets if needed
+      await checkAssetsDesktop(fileName);
       db = await databaseFactoryFfi.openDatabase(fileName);
     }
   }
 
-  /// if database file does'nt exists copy demo data from assets
+  /// if database file doesn't exist on mobile, copy demo data from assets
   Future<void> checkAssets(fileName) async {
     var exists = await sqflite.databaseExists(fileName);
     if (!exists) {
@@ -43,6 +44,20 @@ class SqlDB {
       List<int> bytes =
           data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       await File(fileName).writeAsBytes(bytes, flush: true);
+    }
+  }
+
+  /// if database file doesn't exist on desktop, copy demo data from assets
+  Future<void> checkAssetsDesktop(fileName) async {
+    var file = File(fileName);
+    if (!await file.exists()) {
+      try {
+        await Directory(dirname(fileName)).create(recursive: true);
+      } catch (_) {}
+      ByteData data = await rootBundle.load(join("assets", dbName));
+      List<int> bytes =
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      await file.writeAsBytes(bytes, flush: true);
     }
   }
 
@@ -98,6 +113,48 @@ class SqlDB {
     f = File(newFile);
     await f.copy(fileName);
     await openDatabase(fileName);
+  }
+
+  /// Clear a table and repopulate it with data from a callback function
+  ///
+  /// [table] is the table name to clear and populate
+  /// [dataProvider] is a callback function that returns a List of Maps with the data to insert
+  /// The function is executed within a transaction for data integrity
+  ///
+  /// Example:
+  /// ```dart
+  /// await sqldb.clearAndPopulate('utenti', () async {
+  ///   var response = await http.get(Uri.parse('$server/api/utenti'));
+  ///   return jsonDecode(response.body);
+  /// });
+  /// ```
+  ///
+  Future<void> clearAndPopulate(
+    String table,
+    Future<List<Map<String, dynamic>>> Function() dataProvider,
+  ) async {
+    await db.transaction((txn) async {
+      // Clear table
+      await txn.delete(table);
+
+      // Get data from provider
+      List<Map<String, dynamic>> data = await dataProvider();
+
+      // Insert all records
+      for (var record in data) {
+        await txn.insert(table, record);
+      }
+    });
+  }
+
+  /// Compact the database using VACUUM command
+  ///
+  /// This reclaims unused space and optimizes the database file.
+  /// Should be called periodically to keep the database file size under control.
+  /// Note: VACUUM cannot be run inside a transaction.
+  ///
+  Future<void> vacuum() async {
+    await db.execute('VACUUM');
   }
 }
 

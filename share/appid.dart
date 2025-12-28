@@ -2,13 +2,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 /// Calc anc uuid unique for the app.
-/// 
+///
 Future<String> getUniqueId() async {
   final prefs = await SharedPreferences.getInstance();
   String? uniqueId = prefs.getString('app_unique_id');
 
   if (uniqueId == null) {
-    uniqueId = Uuid().v4(); // Genera un UUID v4
+    uniqueId = Uuid().v4(); // Generate an UUID v4
     await prefs.setString('app_unique_id', uniqueId);
   }
   return uniqueId;
