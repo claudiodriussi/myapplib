@@ -7,7 +7,198 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 
-/// helper class to handle Sqlite databases.
+// =============================================================================
+// SQLITE DATABASE SYSTEM - Cross-platform SQLite with Query Automation
+// =============================================================================
+//
+// This library provides SQLite database management with automatic query
+// generation from reactive forms and cross-platform support (mobile/desktop).
+//
+// ## Core Components
+//
+// ### SqlDB
+// Core database manager with cross-platform support (mobile/desktop).
+// - Automatic database restore from assets on first run
+// - Platform-aware initialization (sqflite for mobile, sqflite_ffi for desktop)
+// - Transaction support for batch operations
+// - Schema introspection for empty row generation
+//
+// ### SearchForm
+// Automatic query builder from FormGroup with JOIN support.
+// - Maps FormGroup fields to SQL WHERE conditions
+// - String fields: LIKE UPPER(?) with wildcards
+// - Other types: exact match (=)
+// - Supports LEFT/INNER JOIN with fluent API
+// - Used for building search screens and list views
+//
+// ### IdSearch + IdSearchFld
+// Foreign key lookup automation system.
+// - Automatically resolves IDs to descriptions
+// - Updates dependent fields on change
+// - Useful for master-detail forms (customer_id → customer_name)
+//
+// ## Quick Start
+//
+// ### 1. Setup Database
+// ```dart
+// // Create instance
+// SqlDB sqldb = SqlDB();
+//
+// // Open database (copies from assets if not exists)
+// await sqldb.openDatabase('$documentsPath/myapp.db', idField: 'id');
+//
+// // Database is ready, automatically copied from assets/myapp.db
+// ```
+//
+// ### 2. Basic Queries
+// ```dart
+// // Find by ID
+// Map customer = await sqldb.find('customers', 'C001');
+//
+// // Direct query
+// List orders = await sqldb.db.query('orders',
+//   where: 'customer_id = ?',
+//   whereArgs: ['C001']
+// );
+//
+// // Transaction for batch operations
+// await sqldb.clearAndPopulate('products', () async {
+//   return await fetchProductsFromAPI();
+// });
+// ```
+//
+// ### 3. SearchForm (Automatic Query from FormGroup)
+// ```dart
+// // Define search form
+// SearchForm searchCustomers = SearchForm(
+//   sqldb: sqldb,
+//   table: 'customers',
+//   group: FormGroup({
+//     'name': FormControl<String>(),
+//     'city': FormControl<String>(),
+//   }),
+//   orderBy: 'name',
+// );
+//
+// // Search automatically builds WHERE clause
+// await searchCustomers.query(); // Returns all
+//
+// // User types "John" in name field
+// searchCustomers.group.control('name').value = 'John';
+// await searchCustomers.query();
+// // Executes: SELECT * FROM customers WHERE name LIKE UPPER('%JOHN%')
+// ```
+//
+// ### 4. SearchForm with JOIN
+// ```dart
+// SearchForm searchOrders = SearchForm(
+//   sqldb: sqldb,
+//   table: 'orders',
+//   group: FormGroup({
+//     'order_number': FormControl<String>(),
+//   }),
+// ).join('customer',
+//   table: 'customers',
+//   on: 'customer_id',  // orders.customer_id = customers.id
+//   select: ['name', 'city'],
+// );
+//
+// await searchOrders.query();
+// // Results include: order fields + customer_name, customer_city
+// ```
+//
+// ### 5. IdSearch (Foreign Key Lookup)
+// ```dart
+// // Setup ID search for order form
+// IdSearch idSearch = IdSearch(sqldb, orderForm, notifier: orderDoc);
+//
+// idSearch.add(IdSearchFld(
+//   'customer_id',        // FormGroup field
+//   'customers',          // Lookup table
+//   destination: 'customer_name',  // Destination field for description
+//   description: 'name',  // Field to copy from table
+// ));
+//
+// // When user enters customer_id, automatically fill customer_name
+// await idSearch.find('customer_id');
+// // orderForm.control('customer_name').value = 'ACME Corp'
+// ```
+//
+// ## Assets Pattern
+//
+// Place your database file in `assets/yourdb.db` and declare in pubspec.yaml:
+// ```yaml
+// flutter:
+//   assets:
+//     - assets/yourdb.db
+// ```
+//
+// On first run, the database is automatically copied from assets to the
+// application documents directory. Subsequent runs use the copied database,
+// preserving user modifications.
+//
+// To force schema update, use `forceRestoreFromAssets()`.
+//
+// =============================================================================
+
+/// SQLite database manager with cross-platform support
+///
+/// Handles SQLite databases on both mobile (sqflite) and desktop (sqflite_ffi)
+/// platforms. Automatically restores database from assets on first run.
+///
+/// ## Basic Usage
+/// ```dart
+/// SqlDB sqldb = SqlDB();
+/// await sqldb.openDatabase('/path/to/database.db', idField: 'id');
+///
+/// // Find record by ID
+/// Map customer = await sqldb.find('customers', 'C001');
+///
+/// // Check if found
+/// if (customer.isNotEmpty) {
+///   print('Customer: ${customer['name']}');
+/// }
+/// ```
+///
+/// ## Assets Pattern
+/// Place database file in assets folder and it will be automatically copied
+/// on first run:
+/// ```dart
+/// // pubspec.yaml:
+/// // flutter:
+/// //   assets:
+/// //     - assets/myapp.db
+///
+/// await sqldb.openDatabase('$documentsPath/myapp.db');
+/// // First run: copies from assets/myapp.db
+/// // Subsequent runs: uses existing database
+/// ```
+///
+/// ## Batch Operations
+/// ```dart
+/// // Clear and populate table with transaction
+/// await sqldb.clearAndPopulate('products', () async {
+///   var response = await http.get(apiUrl);
+///   return jsonDecode(response.body);
+/// });
+///
+/// // Compact database
+/// await sqldb.vacuum();
+/// ```
+///
+/// ## Empty Row Generation
+/// ```dart
+/// // Get empty row with default values based on schema
+/// Map emptyCustomer = await sqldb.toEmpty('customers');
+/// // Returns: {'id': '', 'name': '', 'email': '', 'age': 0, ...}
+/// ```
+///
+/// ## Force Schema Update
+/// ```dart
+/// // Delete existing DB and restore from assets (updates schema)
+/// await sqldb.forceRestoreFromAssets();
+/// ```
+///
 class SqlDB {
   String fileName = '';
   String dbPath = '';
@@ -185,18 +376,152 @@ class _QuickFilter {
   _QuickFilter(this.where, this.args, this.condition, this.icon);
 }
 
-/// Uses a [FormGroup] to automate queries in a [SqlDB] database
+/// Automatic query builder from FormGroup with JOIN support
 ///
-/// The names of controls of the [FormGroup] must match the names of database
-/// fields, or start with an underscore '_' for utility fields. Fields matching
-/// database columns are automatically handled using "LIKE UPPER(?)" for String
-/// fields and "=" for other types.
+/// SearchForm maps FormGroup field values to SQL WHERE conditions automatically:
+/// - String fields → `LIKE UPPER('%value%')` (case-insensitive partial match)
+/// - Other types → `= value` (exact match)
+/// - Fields starting with '_' → ignored (use for UI-only fields)
 ///
-/// Fields starting with underscore '_' are ignored by automatic query generation
-/// and can be used for custom logic with [extraWhere] parameter.
+/// ## Basic Usage
+/// ```dart
+/// // Create search form
+/// SearchForm searchCustomers = SearchForm(
+///   sqldb: sqldb,
+///   table: 'customers',
+///   group: FormGroup({
+///     'name': FormControl<String>(),
+///     'city': FormControl<String>(),
+///     'age': FormControl<int>(),
+///   }),
+///   orderBy: 'name',
+/// );
 ///
-/// The result query can be used to populate a ListView. The [isSearch] field
-/// indicates if the ListView should show selection buttons for row picking.
+/// // Query all customers (empty form)
+/// await searchCustomers.query();
+/// // SQL: SELECT * FROM customers ORDER BY name
+///
+/// // User searches for "John" in "Rome"
+/// searchCustomers.group.control('name').value = 'John';
+/// searchCustomers.group.control('city').value = 'Rome';
+/// await searchCustomers.query();
+/// // SQL: SELECT * FROM customers
+/// //      WHERE name LIKE UPPER('%JOHN%')
+/// //        AND city LIKE UPPER('%ROME%')
+/// //      ORDER BY name
+///
+/// // Use results in ListView
+/// ListView.builder(
+///   itemCount: searchCustomers.q.length,
+///   itemBuilder: (context, index) {
+///     Map customer = searchCustomers.q[index];
+///     return ListTile(title: Text(customer['name']));
+///   },
+/// )
+/// ```
+///
+/// ## JOIN Support
+/// ```dart
+/// // Search orders with customer information
+/// SearchForm searchOrders = SearchForm(
+///   sqldb: sqldb,
+///   table: 'orders',
+///   group: FormGroup({
+///     'order_number': FormControl<String>(),
+///   }),
+/// ).join('customer',
+///   table: 'customers',
+///   on: 'customer_id',  // orders.customer_id = customers.id
+///   select: ['name', 'email'],
+/// );
+///
+/// await searchOrders.query();
+/// // Results include: all order fields + customer_name, customer_email
+/// // Access joined fields: row['customer_name'], row['customer_email']
+/// ```
+///
+/// ## Multiple JOINs
+/// ```dart
+/// SearchForm searchInvoices = SearchForm(
+///   sqldb: sqldb,
+///   table: 'invoices',
+///   group: FormGroup({'invoice_number': FormControl<String>()}),
+/// )
+/// .join('customer', table: 'customers', on: 'customer_id', select: ['name'])
+/// .join('product', table: 'products', on: 'product_id', select: ['description']);
+/// ```
+///
+/// ## Progressive Search
+/// ```dart
+/// // Auto-query when user types 3+ characters
+/// ReactiveTextField(
+///   formControlName: 'name',
+///   onChanged: (control) async {
+///     await searchCustomers.search('name', numChars: 3);
+///   },
+/// )
+/// ```
+///
+/// ## Lookup Mode Pattern (isSearch/result)
+/// Use SearchForm as a lookup dialog to let users pick a record:
+///
+/// ```dart
+/// // 1. Setup SearchForm
+/// SearchForm searchCustomers = SearchForm(
+///   sqldb: sqldb,
+///   table: 'customers',
+///   group: FormGroup({'name': FormControl<String>()}),
+/// );
+/// searchCustomers.isSearch = true; // Enable lookup mode
+///
+/// // 2. Show in dialog/screen
+/// await Navigator.push(context,
+///   MaterialPageRoute(builder: (_) => CustomerPickerScreen())
+/// );
+///
+/// // 3. In ListView, add selection button
+/// ListView.builder(
+///   itemCount: searchCustomers.q.length,
+///   itemBuilder: (context, index) {
+///     Map customer = searchCustomers.q[index];
+///     return ListTile(
+///       title: Text(customer['name']),
+///       trailing: searchCustomers.isSearch
+///         ? IconButton(
+///             icon: Icon(Icons.check),
+///             onPressed: () {
+///               // Store selected ID in result and pop
+///               searchCustomers.found(context, customer['id']);
+///             },
+///           )
+///         : null,
+///     );
+///   },
+/// )
+///
+/// // 4. After Navigator.pop, check result
+/// if (searchCustomers.result != null) {
+///   orderForm.control('customer_id').value = searchCustomers.result;
+/// }
+/// ```
+///
+/// ## Hidden Fields Pattern
+/// ```dart
+/// FormGroup({
+///   'name': FormControl<String>(),      // Used in WHERE clause
+///   '_displayMode': FormControl<String>(), // Ignored by query (UI helper)
+/// })
+/// ```
+///
+/// ## Custom WHERE Conditions
+/// ```dart
+/// // Add custom conditions beyond FormGroup fields
+/// await searchCustomers.query(
+///   extraWhere: 'created_date > ?',
+///   extraArgs: ['2024-01-01'],
+/// );
+/// // Combined with FormGroup conditions using AND
+/// ```
 ///
 class SearchForm with ChangeNotifier {
   SqlDB sqldb;
@@ -543,16 +868,113 @@ class SearchQuery extends SearchForm {
 
 
 
-/// Implements a search system for values inserted into a reactive_forms
-/// [FormGroup] using an [SqlDB],
+/// Foreign key lookup automation system
 ///
-/// You have to add an [IdSearchFld] for every field that you would like to
-/// search. Then you can call the method find to search the field and once
-/// the record is found you can call the method cur to get the map of the
-/// found record.
+/// Automatically resolves ID fields to descriptions by looking up values in
+/// related tables. Useful for master-detail forms where you need to display
+/// human-readable descriptions alongside IDs.
 ///
-/// If you pass a reference to a class capable to notifyListeners, the changes
-/// are notified, otherwise you must to do it by yourself.
+/// ## Use Case
+/// In an order form, when user enters a customer ID, automatically fill the
+/// customer name field by looking up the ID in the customers table.
+///
+/// ## Basic Usage
+/// ```dart
+/// // Setup form
+/// FormGroup orderForm = FormGroup({
+///   'customer_id': FormControl<String>(),
+///   'customer_name': FormControl<String>(),  // Auto-filled by IdSearch
+///   'product_id': FormControl<String>(),
+///   'product_name': FormControl<String>(),   // Auto-filled by IdSearch
+/// });
+///
+/// // Create IdSearch instance
+/// IdSearch idSearch = IdSearch(sqldb, orderForm, notifier: orderDoc);
+///
+/// // Add fields to monitor
+/// idSearch.add(IdSearchFld(
+///   'customer_id',              // FormGroup field to monitor
+///   'customers',                // Table to search
+///   destination: 'customer_name',  // FormGroup field to fill
+///   description: 'name',        // Column to copy from table
+/// ));
+///
+/// idSearch.add(IdSearchFld(
+///   'product_id',
+///   'products',
+///   destination: 'product_name',
+///   description: 'description',
+/// ));
+///
+/// // When user enters customer_id
+/// orderForm.control('customer_id').value = 'C001';
+/// await idSearch.find('customer_id');
+/// // orderForm.control('customer_name').value is now 'ACME Corporation'
+/// // (automatically retrieved from customers table)
+/// ```
+///
+/// ## Multiple Description Fields
+/// ```dart
+/// // Combine multiple fields into description
+/// idSearch.add(IdSearchFld(
+///   'customer_id',
+///   'customers',
+///   destination: 'customer_info',
+///   description: ['name', 'city', 'country'],  // List of fields
+/// ));
+///
+/// await idSearch.find('customer_id');
+/// // customer_info = 'ACME Corporation Rome Italy'
+/// ```
+///
+/// ## Integration with ReactiveLookupField
+/// ```dart
+/// // In UI, use with lookup button
+/// ReactiveLookupField(
+///   formControlName: 'customer_id',
+///   labelText: 'Customer',
+///   onLookup: () async {
+///     await Navigator.push(context,
+///       MaterialPageRoute(builder: (_) => CustomerPickerScreen())
+///     );
+///     if (searchCustomers.result != null) {
+///       orderForm.control('customer_id').value = searchCustomers.result;
+///       await idSearch.find('customer_id');  // Auto-fill name
+///     }
+///   },
+/// )
+///
+/// // Display field shows customer name automatically
+/// ReactiveTextField(
+///   formControlName: 'customer_name',
+///   readOnly: true,  // Auto-filled, not editable
+/// )
+/// ```
+///
+/// ## Check if Value Changed
+/// ```dart
+/// if (idSearch.isChanged('customer_id')) {
+///   // Customer was changed, update dependent calculations
+/// }
+/// ```
+///
+/// ## Access Full Record
+/// ```dart
+/// // Get complete record from last find
+/// Map customerRecord = idSearch.cur('customer_id');
+/// String email = customerRecord['email'];
+/// String phone = customerRecord['phone'];
+/// ```
+///
+/// ## Validation Pattern
+/// ```dart
+/// // Find returns false if ID not found
+/// bool found = await idSearch.find('customer_id');
+/// if (!found) {
+///   // Show error: invalid customer ID
+///   await alertBox(context, text: 'Customer not found');
+/// }
+/// ```
 ///
 class IdSearch {
   late SqlDB sqldb;
@@ -611,9 +1033,18 @@ class IdSearch {
   Map cur(id) => fields[id].curValue;
 }
 
-/// this class represents a field used by [IdSearch] class.
+/// Field configuration for IdSearch
 ///
-/// It store all data needed to search a value into a [SqlDB] table.
+/// Defines how an ID field should be resolved to its description.
+///
+/// ```dart
+/// IdSearchFld(
+///   'customer_id',              // FormGroup field name
+///   'customers',                // Database table
+///   destination: 'customer_name',  // Field to update with description
+///   description: 'name',        // Column(s) to read from table
+/// )
+/// ```
 ///
 class IdSearchFld {
   late String id; // id name of field to search into the FormGroup
