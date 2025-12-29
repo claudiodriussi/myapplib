@@ -527,6 +527,315 @@ Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) 
 
 /// the default submit button used with reactive_forms
 ///
+// ----------------------------------------------------------------------------
+// REUSABLE FILTER SYSTEM
+// ----------------------------------------------------------------------------
+
+/// Abstract base class for document filtering and sorting
+///
+/// Provides a flexible filter system with various operators:
+/// - Equality: field == value
+/// - Not equal: field != value
+/// - Range: value >= from && value <= to
+/// - Contains: string contains substring (case insensitive)
+/// - Date equal: all records of a specific date (ignores time)
+///
+/// And a sorting system with:
+/// - Field-based sorting (addOrder)
+/// - Custom sorting with callbacks (addCustomOrder)
+/// - Ascending/descending toggle
+/// - Automatic PopupMenu generation
+///
+/// Derived classes must:
+/// 1. Initialize fgFiltri in the constructor
+/// 2. Implement applyFilters() to read values and set filters
+/// 3. Add sort orders with addOrder() or addCustomOrder()
+///
+abstract class FilterDocument with ChangeNotifier {
+  final Map<String, dynamic> _filters = {};
+  bool _isActive = true; // If false, filters are disabled (show all)
+  late FormGroup fgFiltri; // FormGroup to be initialized in derived classes
+
+  // Sorting system
+  // Can contain List<String> (fields) or Function (custom callback)
+  final Map<String, dynamic> _orders = {};
+  String? _currentOrder; // Current order key
+  bool _reverseOrder = false; // true = descending order
+
+  bool get isActive => _isActive;
+
+  // Sorting getters
+  bool get isReversed => _reverseOrder;
+  String? get currentOrderName => _currentOrder;
+  List<String> get availableOrders => _orders.keys.toList();
+
+  /// Abstract method to be implemented in derived classes
+  /// Must read values from FormGroup and call appropriate set* methods
+  void applyFilters();
+
+  /// Toggle filters on/off
+  void toggleActive() {
+    _isActive = !_isActive;
+    notifyListeners();
+  }
+
+  /// Reset FormGroup and filters to default values
+  void resetFilters() {
+    formGroupReset(fgFiltri);
+    applyFilters();
+  }
+
+  /// Add field-based sorting
+  /// The first order added becomes the default
+  void addOrder(String name, List<String> fields) {
+    _orders[name] = fields;
+    _currentOrder ??= name; // first added is default
+  }
+
+  /// Add custom sorting with comparison function
+  /// The function receives two Map (record headers) and returns int (-1, 0, 1)
+  void addCustomOrder(String name, int Function(Map, Map) compareFn) {
+    _orders[name] = compareFn;
+    _currentOrder ??= name;
+  }
+
+  /// Set current sort order
+  void setOrder(String name) {
+    if (_orders.containsKey(name)) {
+      _currentOrder = name;
+      notifyListeners();
+    }
+  }
+
+  /// Toggle current order (ascending/descending)
+  void toggleReverse() {
+    _reverseOrder = !_reverseOrder;
+    notifyListeners();
+  }
+
+  /// Reset to default sort order (first added, not reversed)
+  void resetOrder() {
+    if (_orders.isNotEmpty) {
+      _currentOrder = _orders.keys.first;
+      _reverseOrder = false;
+      notifyListeners();
+    }
+  }
+
+  /// Sort a list of records according to current order
+  /// Assumes each element has a 'header' map
+  void sortRows(List<dynamic> rows) {
+    if (_orders.isEmpty || _currentOrder == null) return;
+
+    var orderDef = _orders[_currentOrder];
+
+    rows.sort((a, b) {
+      int cmp;
+
+      if (orderDef is Function) {
+        // Custom sorting with callback
+        cmp = orderDef(a['header'], b['header']);
+      } else if (orderDef is List<String>) {
+        // Field-based sorting
+        cmp = _compareByFields(a['header'], b['header'], orderDef);
+      } else {
+        return 0;
+      }
+
+      return _reverseOrder ? -cmp : cmp;
+    });
+  }
+
+  /// Compare two records based on a list of fields
+  int _compareByFields(Map a, Map b, List<String> fields) {
+    for (String field in fields) {
+      dynamic valA = a[field];
+      dynamic valB = b[field];
+
+      // Handle null values
+      if (valA == null && valB == null) continue;
+      if (valA == null) return 1;
+      if (valB == null) return -1;
+
+      // Compare
+      int cmp = 0;
+      if (valA is Comparable) {
+        cmp = valA.compareTo(valB);
+      } else {
+        cmp = valA.toString().compareTo(valB.toString());
+      }
+
+      // If different, return
+      if (cmp != 0) return cmp;
+    }
+    return 0;
+  }
+
+  /// Generate menu entries for sorting
+  List<PopupMenuEntry<String>> buildOrderMenu() {
+    List<PopupMenuEntry<String>> items = [];
+
+    // Add all available sort orders
+    for (String name in _orders.keys) {
+      items.add(PopupMenuItem(
+        value: name,
+        child: Row(
+          children: [
+            if (_currentOrder == name) const Icon(Icons.check, size: 16),
+            if (_currentOrder == name) const SizedBox(width: 8),
+            Text(name),
+          ],
+        ),
+      ));
+    }
+
+    // Divider
+    items.add(const PopupMenuDivider());
+
+    // Toggle ascending/descending
+    items.add(PopupMenuItem(
+      value: '__toggle__',
+      child: Row(
+        children: [
+          Icon(
+            _reverseOrder ? Icons.arrow_upward : Icons.arrow_downward,
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(_reverseOrder ? 'Ascending' : 'Descending'),
+        ],
+      ),
+    ));
+
+    return items;
+  }
+
+  /// Handle selection from sort menu
+  void handleOrderSelection(String value) {
+    if (value == '__toggle__') {
+      toggleReverse();
+    } else {
+      setOrder(value);
+    }
+  }
+
+  /// Set equality filter
+  void setEqual(String field, dynamic value) {
+    if (value == null) {
+      _filters.remove(field);
+    } else {
+      _filters[field] = {'type': 'equal', 'value': value};
+    }
+    notifyListeners();
+  }
+
+  /// Set not-equal filter
+  void setNotEqual(String field, dynamic value) {
+    if (value == null) {
+      _filters.remove(field);
+    } else {
+      _filters[field] = {'type': 'notEqual', 'value': value};
+    }
+    notifyListeners();
+  }
+
+  /// Set range filter (from/to)
+  void setRange(String field, {dynamic from, dynamic to}) {
+    if (from == null && to == null) {
+      _filters.remove(field);
+    } else {
+      _filters[field] = {'type': 'range', 'from': from, 'to': to};
+    }
+    notifyListeners();
+  }
+
+  /// Set contains filter (case insensitive)
+  void setContains(String field, String? value) {
+    if (value == null || value.isEmpty) {
+      _filters.remove(field);
+    } else {
+      _filters[field] = {'type': 'contains', 'value': value.toUpperCase()};
+    }
+    notifyListeners();
+  }
+
+  /// Set date equality filter (ignores time)
+  void setDateEqual(String field, DateTime? date) {
+    if (date == null) {
+      _filters.remove(field);
+    } else {
+      _filters[field] = {
+        'type': 'dateEqual',
+        'value': DateTime(date.year, date.month, date.day)
+      };
+    }
+    notifyListeners();
+  }
+
+  /// Check if a record passes all filters
+  bool check(Map record) {
+    // If filters disabled, pass everything
+    if (!_isActive) return true;
+
+    // If no filters set, pass everything
+    if (_filters.isEmpty) return true;
+
+    // Check each filter
+    for (var entry in _filters.entries) {
+      String field = entry.key;
+      Map filterDef = entry.value;
+      String type = filterDef['type'];
+
+      dynamic fieldValue = record[field];
+
+      switch (type) {
+        case 'equal':
+          if (fieldValue != filterDef['value']) return false;
+          break;
+
+        case 'notEqual':
+          if (fieldValue == filterDef['value']) return false;
+          break;
+
+        case 'range':
+          dynamic from = filterDef['from'];
+          dynamic to = filterDef['to'];
+          if (from != null && fieldValue < from) return false;
+          if (to != null && fieldValue > to) return false;
+          break;
+
+        case 'contains':
+          if (fieldValue == null) return false;
+          String strValue = fieldValue.toString().toUpperCase();
+          if (!strValue.contains(filterDef['value'])) return false;
+          break;
+
+        case 'dateEqual':
+          if (fieldValue == null) return false;
+          if (fieldValue is! DateTime) return false;
+          DateTime checkDate = DateTime(
+            fieldValue.year,
+            fieldValue.month,
+            fieldValue.day,
+          );
+          if (checkDate != filterDef['value']) return false;
+          break;
+
+        default:
+          return false;
+      }
+    }
+
+    return true;
+  }
+
+  /// Return the number of active filters
+  int get count => _filters.length;
+
+  /// Check if a specific field is filtered
+  bool hasFilter(String field) => _filters.containsKey(field);
+}
+
 ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
   var rb = ReactiveButton();
   rb.text = text;

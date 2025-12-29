@@ -61,6 +61,17 @@ class SqlDB {
     }
   }
 
+  /// Forces database restoration from assets even if it already exists
+  /// Useful for updating the database schema
+  Future<void> forceRestoreFromAssets() async {
+    await db.close();
+    var file = File(fileName);
+    if (await file.exists()) {
+      await file.delete();
+    }
+    await openDatabase(fileName, idField: idName);
+  }
+
   /// find the row with the given id.
   ///
   /// [idField] is optional, if not given uses the default one. If the key
