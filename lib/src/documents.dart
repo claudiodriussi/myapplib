@@ -6,6 +6,152 @@ import 'package:hive/hive.dart';
 import "my.i18n.dart";
 import 'utils.dart';
 
+// =============================================================================
+// DOCUMENT SYSTEM - Flexible Form-based Data Management
+// =============================================================================
+//
+// This library provides a complete document management system with reactive
+// forms integration and flexible persistence options.
+//
+// ## Core Components
+//
+// ### Document
+// Manages structured data with header/detail pattern (invoices, orders, reports).
+// - Header: single FormGroup for main document fields
+// - Details: one or more ListRows for detail lines
+// - Supports complex multi-section documents (e.g., invoice with items + payments)
+//
+// ### ListRows
+// Manages lists of rows, usable standalone or within a Document.
+// - Each row follows a FormGroup schema
+// - Built-in filtering support via callback
+// - Can be used independently for simple lists
+//
+// ### HiveMap
+// Simple key-value storage with FormGroup integration for settings/preferences.
+// - Direct Hive box binding
+// - Automatic load/save
+// - Useful for app settings and configuration
+//
+// ### FormsMixin
+// Shared utilities for type conversion, JSON handling, and FormGroup operations.
+// Used by all classes above for consistent behavior.
+//
+// ## Hidden Fields Pattern
+//
+// Fields starting with "_" (underscore) are excluded from persistence.
+// Useful for UI-only fields that shouldn't be saved:
+//
+// ```dart
+// FormGroup({
+//   'name': FormControl<String>(),        // saved
+//   '_displayName': FormControl<String>(), // NOT saved (UI helper)
+// })
+// ```
+//
+// ## Quick Examples
+//
+// ### Simple Document (Note/Memo)
+// ```dart
+// class Note extends Document with Document2Hive {
+//   Note() {
+//     fgHeader = FormGroup({
+//       'title': FormControl<String>(),
+//       'content': FormControl<String>(),
+//       'date': FormControl<DateTime>(),
+//     });
+//     setBox(app.hiveBoxes['notes']);
+//   }
+// }
+//
+// // Usage
+// Note note = Note();
+// await note.reset();
+// note.H('title').value = 'My Note';
+// note.H('date').value = DateTime.now();
+// await note.save();
+// ```
+//
+// ### Document with Detail Rows (Invoice)
+// ```dart
+// class Invoice extends Document with Document2Hive {
+//   Invoice() {
+//     fgHeader = FormGroup({
+//       'customer': FormControl<String>(),
+//       'date': FormControl<DateTime>(),
+//       'total': FormControl<double>(),
+//     });
+//
+//     // Add detail rows schema
+//     addDocRows(FormGroup({
+//       'item': FormControl<String>(),
+//       'qty': FormControl<int>(),
+//       'price': FormControl<double>(),
+//     }));
+//
+//     setBox(app.hiveBoxes['invoices']);
+//   }
+// }
+//
+// // Usage
+// Invoice inv = Invoice();
+// await inv.reset();
+// inv.H('customer').value = 'ACME Corp';
+// inv.H('date').value = DateTime.now();
+//
+// // Add detail rows
+// inv.rows().addRow(data: {'item': 'Widget', 'qty': 10, 'price': 5.0});
+// inv.rows().addRow(data: {'item': 'Gadget', 'qty': 5, 'price': 12.0});
+//
+// await inv.save();
+// ```
+//
+// ### Settings with HiveMap
+// ```dart
+// HiveMap settings = HiveMap(
+//   app.hiveBoxes['settings'],
+//   FormGroup({
+//     'theme': FormControl<String>(value: 'light'),
+//     'language': FormControl<String>(value: 'en'),
+//     'fontSize': FormControl<int>(value: 14),
+//   })
+// );
+//
+// // Load from storage
+// await settings.load();
+//
+// // Update single value
+// await settings.update('theme', 'dark');
+//
+// // Access value
+// String theme = settings.get('theme');
+// ```
+//
+// ### Standalone List (Simple TODO list)
+// ```dart
+// ListRows todos = ListRows(FormGroup({
+//   'task': FormControl<String>(),
+//   'done': FormControl<bool>(value: false),
+// }));
+//
+// todos.addRow(data: {'task': 'Buy milk', 'done': false});
+// todos.addRow(data: {'task': 'Call John', 'done': true});
+//
+// // Filter completed tasks
+// todos.setFilter((row) => row['done'] == true);
+// print('Completed: ${todos.displayCount}');
+// ```
+//
+// ## Document Lifecycle
+//
+// 1. **Create/Reset**: `await doc.reset()` - clears all data
+// 2. **Edit Header**: `await doc.editHeader(editFn: () => Navigator.push(...))`
+// 3. **Edit Rows**: `await doc.rows().editRow(numRow: 0, editFn: ...)`
+// 4. **Save**: `await doc.save()` (with Document2Hive mixin)
+// 5. **Load**: `await doc.load(key)` (with Document2Hive mixin)
+//
+// =============================================================================
+
 /// Common FormGroup utilities for Document, HiveTable, and HiveMap
 /// Provides consistent handling of FormGroup operations, type conversions, and JSON serialization
 mixin FormsMixin on ChangeNotifier {
@@ -83,8 +229,52 @@ mixin FormsMixin on ChangeNotifier {
   }
 }
 
-/// uses a hive box to store key values Fields integrated with reactive_forms
-/// and provider
+/// Simple key-value storage with reactive forms integration
+///
+/// HiveMap provides persistent storage for app settings, preferences, or any
+/// simple key-value data that needs to be bound to UI forms.
+///
+/// ## Features
+/// - Direct Hive box binding for persistence
+/// - Automatic FormGroup integration
+/// - Individual field updates with `update()`
+/// - Batch operations with `load()` and `save()`
+/// - Hidden fields support (fields starting with "_")
+///
+/// ## Usage Example
+/// ```dart
+/// // Create settings storage
+/// HiveMap settings = HiveMap(
+///   app.hiveBoxes['settings'],
+///   FormGroup({
+///     'theme': FormControl<String>(value: 'light'),
+///     'notifications': FormControl<bool>(value: true),
+///     'fontSize': FormControl<int>(value: 14),
+///   })
+/// );
+///
+/// // Load persisted values
+/// await settings.load();
+///
+/// // Read value
+/// String theme = settings.get('theme');
+///
+/// // Update single value (saves immediately)
+/// await settings.update('theme', 'dark');
+///
+/// // Bulk update
+/// settings.set('theme', 'dark');
+/// settings.set('fontSize', 16);
+/// await settings.save(); // Save all changes at once
+/// ```
+///
+/// ## Integration with reactive_forms
+/// ```dart
+/// // Use in UI with ReactiveForm
+/// ReactiveTextField<String>(
+///   formControlName: 'theme',
+/// )
+/// ```
 ///
 class HiveMap with ChangeNotifier, FormsMixin {
   final Box? box;
@@ -136,10 +326,111 @@ class HiveMap with ChangeNotifier, FormsMixin {
   }
 }
 
-/// A document is composed by an header and some rows. The header and each row
-/// can be edited with a reactive_forms formGroup.
-/// The class contains methods to manipulate data ahd to notify changes to
-/// provider.
+/// Structured document with header/detail pattern
+///
+/// Document manages complex structured data like invoices, orders, reports,
+/// or any data with a header section and one or more detail sections (rows).
+///
+/// ## Architecture
+/// - **Header**: Single FormGroup for document-level fields (date, customer, total, etc.)
+/// - **Detail Rows**: Zero or more ListRows collections for detail lines
+/// - **Multiple Sections**: Supports documents with multiple row types (e.g., invoice items + payments)
+///
+/// ## Key Features
+/// - Automatic dirty tracking (`isModified`, `hasAnyChanges`)
+/// - Edit callbacks for header and rows with validation
+/// - JSON serialization/deserialization
+/// - Hidden fields support (fields starting with "_")
+/// - Optional persistence via Document2Hive mixin
+///
+/// ## Basic Usage
+/// ```dart
+/// // Define your document
+/// class Invoice extends Document with Document2Hive {
+///   Invoice() {
+///     // Define header schema
+///     fgHeader = FormGroup({
+///       'invoiceNumber': FormControl<String>(),
+///       'date': FormControl<DateTime>(),
+///       'customer': FormControl<String>(),
+///       'total': FormControl<double>(),
+///     });
+///
+///     // Define detail rows schema
+///     addDocRows(FormGroup({
+///       'item': FormControl<String>(),
+///       'quantity': FormControl<int>(),
+///       'price': FormControl<double>(),
+///     }));
+///
+///     setBox(app.hiveBoxes['invoices']);
+///   }
+/// }
+///
+/// // Use the document
+/// Invoice invoice = Invoice();
+/// await invoice.reset(); // Clear data
+///
+/// // Set header fields
+/// invoice.H('invoiceNumber').value = 'INV-001';
+/// invoice.H('date').value = DateTime.now();
+/// invoice.H('customer').value = 'ACME Corp';
+///
+/// // Add detail rows
+/// invoice.rows().addRow(data: {
+///   'item': 'Widget',
+///   'quantity': 10,
+///   'price': 25.0
+/// });
+///
+/// // Save document
+/// invoice.key = 'INV-001';
+/// await invoice.save();
+///
+/// // Load document
+/// await invoice.load('INV-001');
+/// ```
+///
+/// ## Advanced: Multiple Row Types
+/// ```dart
+/// class ComplexDoc extends Document with Document2Hive {
+///   ComplexDoc() {
+///     fgHeader = FormGroup({...});
+///
+///     // Multiple detail sections
+///     addDocRows(FormGroup({...}), key: 'items');
+///     addDocRows(FormGroup({...}), key: 'payments');
+///     addDocRows(FormGroup({...}), key: 'notes');
+///   }
+/// }
+///
+/// // Access specific row collection
+/// doc.rows(key: 'items').addRow(...);
+/// doc.rows(key: 'payments').addRow(...);
+/// ```
+///
+/// ## Edit Pattern with UI
+/// ```dart
+/// // Edit header with validation
+/// await invoice.editHeader(
+///   editFn: () async {
+///     await Navigator.push(context,
+///       MaterialPageRoute(builder: (_) => EditInvoiceScreen())
+///     );
+///     // If user cancels, set invoice.editOk = false
+///   }
+/// );
+///
+/// // Edit specific row
+/// await invoice.rows().editRow(
+///   numRow: 0, // Edit first row
+///   editFn: () async {
+///     await Navigator.push(context,
+///       MaterialPageRoute(builder: (_) => EditRowScreen())
+///     );
+///   }
+/// );
+/// ```
 ///
 class Document with ChangeNotifier, FormsMixin {
   dynamic key; // document key (null = new document)
@@ -180,7 +471,7 @@ class Document with ChangeNotifier, FormsMixin {
   bool get hasAnyChanges {
     // Check if form fields have been modified (dirty)
     if (!fgHeader.pristine) return true;
-    
+
     // Check document modified flag and rows
     return isModified;
   }
@@ -299,11 +590,103 @@ class Document with ChangeNotifier, FormsMixin {
   void notify() => notifyListeners();
 }
 
-/// handle a list of rows within a Document or stand alone.
+/// Manages a list of rows within a Document or standalone
 ///
-/// rows are stored in a list of maps. Each row contain the fields defined
-/// in a FormGroup and are present all methods to handle the rows. If the
-/// list belongs to a Document, changes are notified to listeners.
+/// ListRows provides a flexible way to manage collections of structured data.
+/// Each row follows a schema defined by a FormGroup. Can be used as part of
+/// a Document (for detail lines) or independently for simple lists.
+///
+/// ## Features
+/// - Schema-based rows via FormGroup
+/// - Add, edit, remove operations
+/// - Built-in filtering with `setFilter()`
+/// - Display vs actual rows (`displayRows` vs `rows`)
+/// - Optional Document integration for change notifications
+///
+/// ## Standalone Usage
+/// ```dart
+/// // Create a simple task list
+/// ListRows tasks = ListRows(FormGroup({
+///   'title': FormControl<String>(),
+///   'done': FormControl<bool>(value: false),
+///   'priority': FormControl<int>(value: 0),
+/// }));
+///
+/// // Add rows
+/// tasks.addRow(data: {'title': 'Buy groceries', 'priority': 1});
+/// tasks.addRow(data: {'title': 'Call client', 'priority': 2});
+///
+/// // Access rows
+/// print('Total tasks: ${tasks.rows.length}');
+/// for (var task in tasks.rows) {
+///   print('${task['title']} - Priority: ${task['priority']}');
+/// }
+/// ```
+///
+/// ## Filtering
+/// ```dart
+/// // Show only incomplete tasks
+/// tasks.setFilter((row) => row['done'] == false);
+/// print('Incomplete tasks: ${tasks.displayCount}'); // Uses filter
+/// print('Total tasks: ${tasks.rows.length}');       // All rows
+///
+/// // Access filtered rows
+/// for (var task in tasks.displayRows) {
+///   // Only shows rows matching filter
+/// }
+///
+/// // Clear filter
+/// tasks.clearFilter();
+/// ```
+///
+/// ## Editing Rows
+/// ```dart
+/// // Edit existing row
+/// await tasks.editRow(
+///   numRow: 0, // Edit first row
+///   editFn: () async {
+///     // Show edit form
+///     await showDialog(...);
+///     // Form values are automatically saved if editOk remains true
+///   }
+/// );
+///
+/// // Add new row (numRow: -1 or >= length)
+/// await tasks.editRow(
+///   numRow: -1,
+///   editFn: () async {
+///     // Show add form
+///   }
+/// );
+/// ```
+///
+/// ## Integration with Document
+/// ```dart
+/// class Invoice extends Document {
+///   Invoice() {
+///     addDocRows(FormGroup({
+///       'item': FormControl<String>(),
+///       'qty': FormControl<int>(),
+///     }));
+///   }
+/// }
+///
+/// Invoice inv = Invoice();
+/// inv.rows().addRow(data: {'item': 'Widget', 'qty': 5});
+/// // Changes automatically notify Document listeners
+/// ```
+///
+/// ## Helper Methods
+/// ```dart
+/// // Get specific row by field value
+/// Map item = tasks.getFirst('title', 'Buy groceries');
+///
+/// // Generate dropdown menu items
+/// List<DropdownMenuItem> items = tasks.menuItems('id', 'title');
+///
+/// // Remove row with confirmation
+/// await tasks.removeRow(0, context: context, text: 'Delete this task?');
+/// ```
 ///
 class ListRows {
   List rows = []; // document rows
@@ -477,7 +860,105 @@ class ListRows {
   }
 }
 
-/// add persistence to a Document using a hiveBox.
+/// Adds Hive-based persistence to Document
+///
+/// Document2Hive is a mixin that separates persistence logic from business logic.
+/// The Document class focuses on data structure and manipulation, while this
+/// mixin provides the storage implementation.
+///
+/// ## Design Pattern: Separation of Concerns
+///
+/// This separation allows:
+/// - **Flexibility**: Easy to swap storage (Hive → SQLite → Cloud → etc.)
+/// - **Testability**: Test Document logic without persistence
+/// - **Clean architecture**: Document defines "what", mixin defines "where"
+///
+/// ## Usage
+///
+/// Simply add the mixin to your Document class:
+/// ```dart
+/// class Invoice extends Document with Document2Hive {
+///   Invoice() {
+///     fgHeader = FormGroup({
+///       'number': FormControl<String>(),
+///       'date': FormControl<DateTime>(),
+///     });
+///
+///     // Specify which Hive box to use for persistence
+///     setBox(app.hiveBoxes['invoices']);
+///   }
+/// }
+/// ```
+///
+/// ## Persistence Operations
+/// ```dart
+/// Invoice inv = Invoice();
+/// inv.key = 'INV-001';
+/// inv.H('number').value = 'INV-001';
+/// inv.H('date').value = DateTime.now();
+///
+/// // Save to Hive (async operation)
+/// await inv.save();
+///
+/// // Load from Hive
+/// await inv.load('INV-001');
+/// ```
+///
+/// ## Storage Format
+///
+/// Documents are stored as Maps in Hive with this structure:
+/// ```dart
+/// {
+///   "class": "Invoice",           // Document class name
+///   "key": "INV-001",             // Document key
+///   "header": {                   // Header fields
+///     "number": "INV-001",
+///     "date": "2024-01-15T10:30:00.000"
+///   },
+///   "rows": [                     // Detail rows (if any)
+///     {"item": "Widget", "qty": 5},
+///     {"item": "Gadget", "qty": 3}
+///   ]
+/// }
+/// ```
+///
+/// ## Alternative Persistence
+///
+/// You can implement different persistence strategies by creating other mixins:
+/// ```dart
+/// // Example: SQLite persistence
+/// mixin Document2SQLite on Document {
+///   @override
+///   Future<void> save() async {
+///     // Store in SQLite
+///   }
+///
+///   @override
+///   Future<void> load(key) async {
+///     // Load from SQLite
+///   }
+/// }
+///
+/// // Example: Cloud persistence
+/// mixin Document2Firestore on Document {
+///   @override
+///   Future<void> save() async {
+///     // Store in Firestore
+///   }
+///
+///   @override
+///   Future<void> load(key) async {
+///     // Load from Firestore
+///   }
+/// }
+/// ```
+///
+/// ## Benefits of this Pattern
+///
+/// 1. **Single Responsibility**: Document handles structure, mixin handles storage
+/// 2. **Open/Closed Principle**: Extend storage without modifying Document
+/// 3. **Dependency Inversion**: Document doesn't depend on specific storage
+/// 4. **Reusability**: Same Document logic, different storage backends
 ///
 mixin Document2Hive on Document {
   Box? _box;
@@ -515,17 +996,46 @@ String? getFirstErrorField(FormGroup formGroup) {
 /// Shows an alert with field-specific or generic error message
 Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) async {
   String? campo = getFirstErrorField(formGroup);
-  String testo = campo != null 
+  String testo = campo != null
       ? "Error in field '\$campo'".i18n.replaceAll('\$campo', campo)
       : "Check entered data!".i18n;
-  
+
   await alertBox(
     context,
     text: testo,
   );
 }
 
-/// the default submit button used with reactive_forms
+// ----------------------------------------------------------------------------
+// REACTIVE FORMS HELPERS
+// ----------------------------------------------------------------------------
+
+/// Creates a submit button for reactive forms with automatic validation
+///
+/// Validates the form, executes onOk callback if valid, then pops navigation.
+/// Shows error dialog if invalid (or executes custom onError callback).
+///
+/// ```dart
+/// submitButton(
+///   text: 'Save',
+///   onOk: () async => await document.save(),
+/// )
+/// ```
+///
+ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
+  var rb = ReactiveButton();
+  rb.text = text;
+  rb.onOk = onOk;
+  rb.onError = onError;
+  return rb;
+}
+
+/// Submit button widget for reactive_forms with validation and navigation
+///
+/// Finds parent ReactiveForm, validates on tap, executes callbacks based on
+/// validation result. Automatically pops navigation on success.
+///
+/// Use `submitButton()` factory function instead of creating instances directly.
 ///
 // ----------------------------------------------------------------------------
 // REUSABLE FILTER SYSTEM
