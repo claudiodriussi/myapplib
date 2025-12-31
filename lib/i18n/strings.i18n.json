@@ -1,0 +1,11 @@
+{
+  "cancel": "Cancel",
+  "ok": "Ok",
+  "enterText": "Enter text",
+  "confirmDelete": "Confirm delete?",
+  "barcodeNotAllowed": "Barcode not allowed.",
+  "yes": "Yes",
+  "no": "No",
+  "errorInField(field)": "Error in field $field",
+  "checkData": "Check entered data!"
+}

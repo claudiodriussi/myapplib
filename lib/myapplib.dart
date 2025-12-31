@@ -8,3 +8,4 @@ export 'src/sqldb.dart';
 export 'src/lookupfield.dart';
 export 'src/restclient.dart';
 export 'src/hivetables.dart';
+export 'i18n/strings.g.dart';

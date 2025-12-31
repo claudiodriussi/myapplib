@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 import 'package:hive/hive.dart';
 
-import "my.i18n.dart";
 import 'utils.dart';
+import '../i18n/strings.g.dart';
 
 // =============================================================================
 // DOCUMENT SYSTEM - Flexible Form-based Data Management
@@ -832,11 +832,11 @@ class ListRows {
   ///
   Future<void> removeRow(int index, {context, text}) async {
     if (context != null) {
-      text ??= 'Confirm delete?'.i18n;
+      text ??= t.confirmDelete;
       if (!await alertBox(
         context,
         text: text,
-        buttons: ['No'.i18n, 'Yes'.i18n],
+        buttons: [t.no, t.yes],
       )) {
         return;
       }
@@ -995,14 +995,14 @@ String? getFirstErrorField(FormGroup formGroup) {
 /// Default error handler for form validation failures
 /// Shows an alert with field-specific or generic error message
 Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) async {
-  String? campo = getFirstErrorField(formGroup);
-  String testo = campo != null
-      ? "Error in field '\$campo'".i18n.replaceAll('\$campo', campo)
-      : "Check entered data!".i18n;
+  String? field = getFirstErrorField(formGroup);
+  String message = field != null
+      ? t.errorInField(field: field)
+      : t.checkData;
 
   await alertBox(
     context,
-    text: testo,
+    text: message,
   );
 }
 
@@ -1037,6 +1037,34 @@ ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
 ///
 /// Use `submitButton()` factory function instead of creating instances directly.
 ///
+class ReactiveButton extends StatelessWidget {
+  ReactiveButton({super.key});
+  String text = "Send";
+  Function? onOk;
+  Function? onError;
+  @override
+  Widget build(BuildContext context) {
+    final form = ReactiveForm.of(context);
+    void valid() async {
+      if (form != null && form.valid) {
+        if (onOk != null) await onOk!();
+        Navigator.pop(context);
+      } else {
+        // Form validation failed, execute error callback or use default
+        if (onError != null) {
+          await onError!();
+        } else if (form != null && form is FormGroup) {
+          await defaultFormErrorHandler(context, form as FormGroup);
+        }
+      }
+    }
+    return ElevatedButton(
+      onPressed: valid,
+      child: Text(text),
+    );
+  }
+}
+
 // ----------------------------------------------------------------------------
 // REUSABLE FILTER SYSTEM
 // ----------------------------------------------------------------------------
@@ -1344,41 +1372,4 @@ abstract class FilterDocument with ChangeNotifier {
 
   /// Check if a specific field is filtered
   bool hasFilter(String field) => _filters.containsKey(field);
-}
-
-ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
-  var rb = ReactiveButton();
-  rb.text = text;
-  rb.onOk = onOk;
-  rb.onError = onError;
-  return rb;
-}
-
-/// a ReactiveButton is a button that validate a reactive_forms form and pop it.
-class ReactiveButton extends StatelessWidget {
-  ReactiveButton({super.key});
-  String text = "Send";
-  Function? onOk;
-  Function? onError;
-  @override
-  Widget build(BuildContext context) {
-    final form = ReactiveForm.of(context);
-    void valid() async {
-      if (form != null && form.valid) {
-        if (onOk != null) await onOk!();
-        Navigator.pop(context);
-      } else {
-        // Form validation failed, execute error callback or use default
-        if (onError != null) {
-          await onError!();
-        } else if (form != null && form is FormGroup) {
-          await defaultFormErrorHandler(context, form as FormGroup);
-        }
-      }
-    }
-    return ElevatedButton(
-      onPressed: valid,
-      child: Text(text),
-    );
-  }
 }

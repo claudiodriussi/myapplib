@@ -1,0 +1,11 @@
+{
+  "cancel": "Annulla",
+  "ok": "Ok",
+  "enterText": "Inserisci il testo",
+  "confirmDelete": "Confermi la cancellazione?",
+  "barcodeNotAllowed": "Barcode non disponibile.",
+  "yes": "Si",
+  "no": "No",
+  "errorInField(field)": "Errore nel campo $field",
+  "checkData": "Controlla i dati inseriti!"
+}
