@@ -152,7 +152,7 @@ import '../i18n/strings.g.dart';
 //
 // =============================================================================
 
-/// Common FormGroup utilities for Document, HiveTable, and HiveMap
+/// Common FormGroup utilities for Document and HiveMap
 /// Provides consistent handling of FormGroup operations, type conversions, and JSON serialization
 mixin FormsMixin on ChangeNotifier {
 
