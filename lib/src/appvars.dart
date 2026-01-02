@@ -67,8 +67,19 @@ class AppVars {
   /// start the app, set app folders and init the settings
   ///
   Future<void> start() async {
-    // initialize myapplib locale
-    ml.LocaleSettings.useDeviceLocale();
+    // initialize myapplib locale (check --dart-define=LOCALE first)
+    const String envLocale = String.fromEnvironment('LOCALE');
+    if (envLocale.isNotEmpty) {
+      if (envLocale == 'en') {
+        ml.LocaleSettings.setLocale(ml.AppLocale.en);
+      } else if (envLocale == 'it') {
+        ml.LocaleSettings.setLocale(ml.AppLocale.it);
+      } else {
+        ml.LocaleSettings.useDeviceLocale();
+      }
+    } else {
+      ml.LocaleSettings.useDeviceLocale();
+    }
 
     // setup app folders
     try {
