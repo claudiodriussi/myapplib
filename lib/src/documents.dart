@@ -4,7 +4,7 @@ import 'package:reactive_forms/reactive_forms.dart';
 import 'package:hive/hive.dart';
 
 import 'utils.dart';
-import '../i18n/strings.g.dart';
+import '../i18n/strings.g.dart' as ml;
 
 // =============================================================================
 // DOCUMENT SYSTEM - Flexible Form-based Data Management
@@ -832,11 +832,11 @@ class ListRows {
   ///
   Future<void> removeRow(int index, {context, text}) async {
     if (context != null) {
-      text ??= t.confirmDelete;
+      text ??= ml.t.confirmDelete;
       if (!await alertBox(
         context,
         text: text,
-        buttons: [t.no, t.yes],
+        buttons: [ml.t.no, ml.t.yes],
       )) {
         return;
       }
@@ -997,8 +997,8 @@ String? getFirstErrorField(FormGroup formGroup) {
 Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) async {
   String? field = getFirstErrorField(formGroup);
   String message = field != null
-      ? t.errorInField(field: field)
-      : t.checkData;
+      ? ml.t.errorInField(field: field)
+      : ml.t.checkData;
 
   await alertBox(
     context,

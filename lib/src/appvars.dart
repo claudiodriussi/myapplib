@@ -5,6 +5,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive/hive.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
+import '../i18n/strings.g.dart' as ml;
+
 // app is a global variable used as singleton
 final AppVars app = AppVars();
 
@@ -65,6 +67,9 @@ class AppVars {
   /// start the app, set app folders and init the settings
   ///
   Future<void> start() async {
+    // initialize myapplib locale
+    ml.LocaleSettings.useDeviceLocale();
+
     // setup app folders
     try {
       docDir = (await getApplicationDocumentsDirectory()).path;

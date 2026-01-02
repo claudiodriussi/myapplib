@@ -7,4 +7,6 @@ export 'src/documents.dart';
 export 'src/sqldb.dart';
 export 'src/lookupfield.dart';
 export 'src/restclient.dart';
-export 'i18n/strings.g.dart';
+
+// Export locale settings for apps that need to sync language with myapplib
+export 'i18n/strings.g.dart' show LocaleSettings, AppLocale;

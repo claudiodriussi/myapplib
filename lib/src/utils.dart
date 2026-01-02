@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 
 import 'appvars.dart';
-import '../i18n/strings.g.dart';
+import '../i18n/strings.g.dart' as ml;
 
 /// Safely converts any value to string, returns defaultValue if null
 ///
@@ -349,7 +349,7 @@ Future<String> textBox(
       content: TextField(
         controller: _textFieldController,
         decoration: InputDecoration(
-          hintText: text ?? t.enterText,
+          hintText: text ?? ml.t.enterText,
           suffixIcon: bars,
         ),
       ),
@@ -358,13 +358,13 @@ Future<String> textBox(
           onPressed: () {
             Navigator.pop(context, value);
           },
-          child: Text(t.cancel),
+          child: Text(ml.t.cancel),
         ),
         TextButton(
           onPressed: () {
             Navigator.pop(context, _textFieldController.text);
           },
-          child: Text(t.ok),
+          child: Text(ml.t.ok),
         ),
       ],
     ),
