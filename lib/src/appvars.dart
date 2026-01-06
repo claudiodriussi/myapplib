@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:hive/hive.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
+import 'utils.dart';
 import '../i18n/strings.g.dart' as ml;
 
 // app is a global variable used as singleton
@@ -114,7 +115,7 @@ class AppVars {
     defaultSetting('activationKey', '');
     defaultSetting('activationUser', '');
     defaultSetting('borderInput', 1);
-    defaultSetting('themeColor', 0xFF673AB7); // deepPurple
+    defaultSetting('themeColor', themeColor);
     defaultSetting('darkTheme', false);
 
     // store settings again to hive

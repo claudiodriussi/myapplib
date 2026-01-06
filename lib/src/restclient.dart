@@ -10,6 +10,7 @@ import 'appvars.dart';
 import 'documents.dart';
 import 'utils.dart';
 import 'sqldb.dart';
+import '../i18n/strings.g.dart' as ml;
 
 /// REST client for data transfer operations
 /// Configurable class suitable for myapplib with default behaviors
@@ -22,6 +23,96 @@ class RestClient {
   String comPath = '';
   BuildContext? context;
 
+  /// Build server address with port and optional prefix
+  /// Can be used as static utility or from instance
+  /// Returns formatted address string for API endpoints
+  static String getAddress(String server, int port, String prefix) {
+    String address = server;
+    if (port != 0 && port != 80) {
+      address = "$address:$port";
+    }
+    if (prefix.isNotEmpty) {
+      String p = prefix.startsWith('/') ? prefix : '/$prefix';
+      if (p.endsWith('/')) {
+        p = p.substring(0, p.length - 1);
+      }
+      address = "$address$p";
+    }
+    return address;
+  }
+
+  /// Test server status endpoint (no authentication required)
+  /// Returns status response map on success, null on failure
+  static Future<Map<String, dynamic>?> testStatus({
+    required String server,
+    required int port,
+    required String prefix,
+    int timeout = 5,
+  }) async {
+    String address = getAddress(server, port, prefix);
+
+    try {
+      var r = await http.get(
+        Uri.parse('$address/api/v1/status'),
+      ).timeout(Duration(seconds: timeout));
+
+      return json.decode(r.body);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Test complete connection including status and authentication
+  /// Returns result string with test results for display
+  static Future<String> testConnection({
+    required String server,
+    required int port,
+    required String prefix,
+    required String user,
+    required String password,
+    required String folder,
+  }) async {
+    String result = "";
+
+    // Test 1: Status endpoint
+    result += "${ml.t.checkingServer}\n";
+    var status = await testStatus(
+      server: server,
+      port: port,
+      prefix: prefix,
+    );
+
+    if (status != null) {
+      result += "- ${ml.t.serverOnlineVersion(version: status['version'])}\n\n";
+    } else {
+      return "- ${ml.t.cannotConnectToServer}";
+    }
+
+    // Test 2: Authentication
+    try {
+      result += "${ml.t.testingCredentials}\n";
+      RestClient client = RestClient(
+        server: server,
+        port: port,
+        user: user,
+        password: password,
+        folder: folder,
+        prefix: prefix,
+      );
+
+      if (await client.getToken()) {
+        result += "- ${ml.t.authenticationSuccessful}";
+      } else {
+        result += "- ${client.errorMessage}";
+      }
+      client.client.close();
+    } catch (e) {
+      result += "- ${ml.t.authError(error: e.toString())}";
+    }
+
+    return result;
+  }
+
   // Server configuration parameters
   final String server;
   final int port;
@@ -33,6 +124,7 @@ class RestClient {
   final Map<String, String> endpoints;
   final String workPath;
   final SqlDB? database;
+  final String archivePath;
 
   // Configurable converters
   String Function(dynamic)? _filenameGenerator;
@@ -41,7 +133,8 @@ class RestClient {
   /// Constructor
   /// Creates local folders and initializes configuration
   /// [prefix] is optional and will be added between server:port and endpoints
-  /// Example: server="http://192.168.0.71", port=5000, prefix="local" 
+  /// [archivePath] is the folder name for document archive (default: 'documents')
+  /// Example: server="http://192.168.0.71", port=5000, prefix="local"
   /// Results in: http://192.168.0.71:5000/local/api/v1/token
   RestClient({
     required this.server,
@@ -58,10 +151,11 @@ class RestClient {
     },
     this.workPath = '',
     this.database,
+    this.archivePath = 'documents',
   }) {
     comPath = workPath.isEmpty ? '${app.extDir}/data/' : workPath;
     Directory(comPath).create(recursive: true);
-    address = getAddress();
+    address = RestClient.getAddress(server, port, prefix);
   }
 
   /// Set custom filename generator
@@ -109,23 +203,6 @@ class RestClient {
     return "${prefix}_$timestamp.json";
   }
 
-  /// Compose server address with port and optional prefix
-  String getAddress() {
-    String address = server;
-    if (port != 0 && port != 80) {
-      address = "$address:$port";
-    }
-    if (prefix.isNotEmpty) {
-      // Ensure prefix starts with / but doesn't end with /
-      String normalizedPrefix = prefix.startsWith('/') ? prefix : '/$prefix';
-      if (normalizedPrefix.endsWith('/')) {
-        normalizedPrefix = normalizedPrefix.substring(0, normalizedPrefix.length - 1);
-      }
-      address = "$address$normalizedPrefix";
-    }
-    return address;
-  }
-
   /// Show alert if context is available
   Future<void> alert(error) async {
     errorMessage = error;
@@ -142,6 +219,7 @@ class RestClient {
         'user': user,
         'password': password,
         'folder': folder,
+        'deviceId': app.settings['deviceId'] ?? '',
       };
       var r = await client
           .post(Uri.parse(address + endPoint), body: data)
@@ -155,7 +233,7 @@ class RestClient {
 
       token = response['token'];
     } catch (e) {
-      await alert("Unable to connect to server!");
+      await alert(ml.t.unableToConnectToServer);
       return false;
     }
     return true;
@@ -164,12 +242,12 @@ class RestClient {
   /// Import database automatically with backup
   Future<bool> importDbAuto() async {
     if (database == null) {
-      await alert("No database configured");
+      await alert(ml.t.noDatabaseConfigured);
       return false;
     }
     SqlDB db = database!;
     String filename = db.dbName;
-    
+
     bool isOk = await downloadFile(filename);
     if (isOk) await db.copyDB('$comPath$filename');
     return isOk;
@@ -213,7 +291,7 @@ class RestClient {
         return true;
       }
     } catch (e) {
-      await alert("Error downloading $filename: $e");
+      await alert(ml.t.errorDownloading(filename: filename, error: e.toString()));
       return false;
     }
   }
@@ -238,18 +316,18 @@ class RestClient {
       // Generate filename using configured or default generator
       fileName = (_filenameGenerator ?? _defaultFilenameGenerator)(document);
 
-      // Convert document using configured or default converter  
+      // Convert document using configured or default converter
       String jsonContent = (_documentConverter ?? _defaultDocumentConverter)(document);
 
       // Save to local archive
-      String archivePath = "${app.extDir}/documenti/";
-      localFilePath = "$archivePath$fileName";
+      String archiveDir = "${app.extDir}/$archivePath/";
+      localFilePath = "$archiveDir$fileName";
 
-      await Directory(archivePath).create(recursive: true);
+      await Directory(archiveDir).create(recursive: true);
       var file = File(localFilePath);
       await saveTextFile(file, jsonContent);
     } catch (e) {
-      await alert("Error preparing document $fileName: $e");
+      await alert(ml.t.errorPreparingDocument(filename: fileName, error: e.toString()));
       return false;
     }
 
@@ -276,14 +354,14 @@ class RestClient {
         String responseBody = await r.stream.bytesToString();
         var response = json.decode(responseBody);
         await alert(
-          "Upload failed: ${response['message'] ?? 'Unknown error'}",
+          ml.t.uploadFailed(message: response['message'] ?? ml.t.unknownError),
         );
         return false;
       }
 
       return true;
     } catch (e) {
-      await alert("Error uploading $fileName: $e");
+      await alert(ml.t.errorUploading(filename: fileName, error: e.toString()));
       return false;
     }
   }
@@ -292,7 +370,7 @@ class RestClient {
   Future<bool> uploadAllDocuments(String boxName) async {
     var box = app.hiveBoxes[boxName];
     if (box == null) {
-      await alert("Box not found: $boxName");
+      await alert(ml.t.boxNotFound(boxName: boxName));
       return false;
     }
 
@@ -308,13 +386,13 @@ class RestClient {
   Future<bool> uploadDocumentByKey(String boxName, String documentKey, {bool removeAfterUpload = false}) async {
     var box = app.hiveBoxes[boxName];
     if (box == null) {
-      await alert("Box not found: $boxName");
+      await alert(ml.t.boxNotFound(boxName: boxName));
       return false;
     }
 
     var document = box.get(documentKey);
     if (document == null) {
-      await alert("Document not found: $documentKey");
+      await alert(ml.t.documentNotFound(documentKey: documentKey));
       return false;
     }
 
@@ -325,5 +403,20 @@ class RestClient {
     }
 
     return success;
+  }
+
+  /// Delete all JSON files in the archive directory
+  Future<void> deleteDocs() async {
+    String path = "${app.extDir}/$archivePath";
+    final Directory directory = Directory(path);
+
+    if (!directory.existsSync()) return;
+
+    final List<FileSystemEntity> files = directory.listSync();
+    for (final FileSystemEntity file in files) {
+      if (file.path.endsWith('.json')) {
+        file.delete();
+      }
+    }
   }
 }

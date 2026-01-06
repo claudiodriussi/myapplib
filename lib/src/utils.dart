@@ -470,6 +470,99 @@ class ThemeNotifier with ChangeNotifier {
 // global variable used to handle themes
 ThemeNotifier theTheme = ThemeNotifier();
 
+// default theme color (deepPurple - matches appvars.dart default)
+int themeColor = themeColors['indigo'].value;
+
+/// Visual Effects and Theme Settings
+///
+/// This screen allows users to customize the app appearance:
+/// - Dark/Light theme toggle
+/// - Material color selection via color grid
+/// - Border style preferences
+class VisualSettings extends StatelessWidget {
+  const VisualSettings({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        title: Text(ml.t.preferences),
+      ),
+      body: _form(context),
+    );
+  }
+
+  Widget _form(context) {
+    return SingleChildScrollView(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Color Preferences Section
+            Text(ml.t.colorPreferences, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+
+            // Color grid - rectangular tiles to save vertical space
+            const MaterialColorGrid(childAspectRatio: 1.6),
+
+            const SizedBox(height: 20),
+
+            // Theme Section
+            Text(ml.t.theme, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  icon: Icon(app.settings['darkTheme'] ? Icons.dark_mode : Icons.light_mode),
+                  label: Text(app.settings['darkTheme'] ? ml.t.darkMode : ml.t.lightMode),
+                  onPressed: () => setDarkTheme(),
+                ),
+                const SizedBox(width: 10),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: Text(ml.t.resetColor),
+                  onPressed: () async {
+                    setThemeColor(themeColor);
+                    app.settings['darkTheme'] = false;
+                    app.saveSettings();
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (BuildContext context) => VisualSettings()),
+                    );
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+
+            // Input Style Section
+            Text(ml.t.inputStyle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                ElevatedButton.icon(
+                  icon: Icon(app.settings['borderInput'] == 1 ? Icons.border_all : Icons.border_bottom),
+                  label: Text(app.settings['borderInput'] == 1 ? ml.t.fullBorder : ml.t.bottomBorder),
+                  onPressed: () async {
+                    app.settings['borderInput'] = app.settings['borderInput'] == 1 ? 0 : 1;
+                    app.saveSettings();
+                    Navigator.pushReplacement(
+                      context,
+                      MaterialPageRoute(builder: (BuildContext context) => const VisualSettings()),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // map with material color themes
 Map themeColors = {
   'red': Colors.red, // 0xFFF44336
@@ -502,4 +595,83 @@ String findThemeColor(var checkColor) {
     if (themeColors[key] == checkColor) return key;
   }
   return "";
+}
+
+/// Simple Material Color Grid
+///
+/// Minimal color picker with just color tiles and a check mark on selected.
+/// No labels, no fancy effects, just clean functionality.
+///
+/// [childAspectRatio] controls the width-to-height ratio of tiles:
+/// - 1.0 = square tiles (default)
+/// - 2.0 = tiles twice as wide as tall (rectangular, saves vertical space)
+/// - 0.5 = tiles twice as tall as wide
+class MaterialColorGrid extends StatelessWidget {
+  final double childAspectRatio;
+
+  const MaterialColorGrid({Key? key, this.childAspectRatio = 1.0}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 4,
+      mainAxisSpacing: 8,
+      crossAxisSpacing: 8,
+      padding: const EdgeInsets.all(16),
+      childAspectRatio: childAspectRatio,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      children: [
+        _colorTile(context, Colors.red),
+        _colorTile(context, Colors.pink),
+        _colorTile(context, Colors.purple),
+        _colorTile(context, Colors.deepPurple),
+        _colorTile(context, Colors.indigo),
+        _colorTile(context, Colors.blue),
+        _colorTile(context, Colors.lightBlue),
+        _colorTile(context, Colors.cyan),
+        _colorTile(context, Colors.teal),
+        _colorTile(context, Colors.green),
+        _colorTile(context, Colors.lightGreen),
+        _colorTile(context, Colors.lime),
+        _colorTile(context, Colors.yellow),
+        _colorTile(context, Colors.amber),
+        _colorTile(context, Colors.orange),
+        _colorTile(context, Colors.deepOrange),
+        _colorTile(context, Colors.brown),
+        _colorTile(context, Colors.grey),
+        _colorTile(context, Colors.blueGrey),
+        _colorTile(context, Colors.black),
+      ],
+    );
+  }
+
+  Widget _colorTile(BuildContext context, Color color) {
+    final isSelected = app.settings['themeColor'] == color.toARGB32();
+
+    return InkWell(
+      onTap: () {
+        setThemeColor(color.toARGB32());
+        (context as Element).markNeedsBuild();
+      },
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: isSelected
+            ? const Icon(
+                Icons.check,
+                color: Colors.white,
+                size: 32,
+              )
+            : null,
+      ),
+    );
+  }
 }

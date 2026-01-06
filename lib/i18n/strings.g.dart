@@ -4,9 +4,9 @@
 /// To regenerate, run: `dart run slang`
 ///
 /// Locales: 2
-/// Strings: 18 (9 per locale)
+/// Strings: 66 (33 per locale)
 ///
-/// Built on 2026-01-02 at 11:40 UTC
+/// Built on 2026-01-06 at 19:30 UTC
 
 // coverage:ignore-file
 // ignore_for_file: type=lint
@@ -157,6 +157,30 @@ class Translations implements BaseTranslations<AppLocale, Translations> {
 	String get no => 'No';
 	String errorInField({required Object field}) => 'Error in field ${field}';
 	String get checkData => 'Check entered data!';
+	String get preferences => 'Preferences';
+	String get colorPreferences => 'Color Preferences';
+	String get theme => 'Theme';
+	String get darkMode => 'Dark Mode';
+	String get lightMode => 'Light Mode';
+	String get resetColor => 'Reset Color';
+	String get inputStyle => 'Input Style';
+	String get fullBorder => 'Full Border';
+	String get bottomBorder => 'Bottom Border';
+	String get checkingServer => 'Checking server...';
+	String serverOnlineVersion({required Object version}) => 'Server online (v${version})';
+	String get cannotConnectToServer => 'Cannot connect to server';
+	String get testingCredentials => 'Testing credentials...';
+	String get authenticationSuccessful => 'Authentication successful';
+	String authError({required Object error}) => 'Auth error: ${error}';
+	String get unableToConnectToServer => 'Unable to connect to server!';
+	String get noDatabaseConfigured => 'No database configured';
+	String errorDownloading({required Object filename, required Object error}) => 'Error downloading ${filename}: ${error}';
+	String errorPreparingDocument({required Object filename, required Object error}) => 'Error preparing document ${filename}: ${error}';
+	String uploadFailed({required Object message}) => 'Upload failed: ${message}';
+	String get unknownError => 'Unknown error';
+	String errorUploading({required Object filename, required Object error}) => 'Error uploading ${filename}: ${error}';
+	String boxNotFound({required Object boxName}) => 'Box not found: ${boxName}';
+	String documentNotFound({required Object documentKey}) => 'Document not found: ${documentKey}';
 }
 
 // Path: <root>
@@ -192,6 +216,30 @@ class _StringsIt implements Translations {
 	@override String get no => 'No';
 	@override String errorInField({required Object field}) => 'Errore nel campo ${field}';
 	@override String get checkData => 'Controlla i dati inseriti!';
+	@override String get preferences => 'Preferenze';
+	@override String get colorPreferences => 'Preferenze Colore';
+	@override String get theme => 'Tema';
+	@override String get darkMode => 'Modalità Scura';
+	@override String get lightMode => 'Modalità Chiara';
+	@override String get resetColor => 'Ripristina';
+	@override String get inputStyle => 'Stile Input';
+	@override String get fullBorder => 'Bordo Completo';
+	@override String get bottomBorder => 'Bordo Inferiore';
+	@override String get checkingServer => 'Verifica server...';
+	@override String serverOnlineVersion({required Object version}) => 'Server online (v${version})';
+	@override String get cannotConnectToServer => 'Impossibile connettersi al server';
+	@override String get testingCredentials => 'Test credenziali...';
+	@override String get authenticationSuccessful => 'Autenticazione riuscita';
+	@override String authError({required Object error}) => 'Errore di autenticazione: ${error}';
+	@override String get unableToConnectToServer => 'Impossibile connettersi al server!';
+	@override String get noDatabaseConfigured => 'Nessun database configurato';
+	@override String errorDownloading({required Object filename, required Object error}) => 'Errore scaricamento ${filename}: ${error}';
+	@override String errorPreparingDocument({required Object filename, required Object error}) => 'Errore preparazione documento ${filename}: ${error}';
+	@override String uploadFailed({required Object message}) => 'Upload fallito: ${message}';
+	@override String get unknownError => 'Errore sconosciuto';
+	@override String errorUploading({required Object filename, required Object error}) => 'Errore upload ${filename}: ${error}';
+	@override String boxNotFound({required Object boxName}) => 'Box non trovato: ${boxName}';
+	@override String documentNotFound({required Object documentKey}) => 'Documento non trovato: ${documentKey}';
 }
 
 /// Flat map(s) containing all translations.
@@ -209,6 +257,30 @@ extension on Translations {
 			case 'no': return 'No';
 			case 'errorInField': return ({required Object field}) => 'Error in field ${field}';
 			case 'checkData': return 'Check entered data!';
+			case 'preferences': return 'Preferences';
+			case 'colorPreferences': return 'Color Preferences';
+			case 'theme': return 'Theme';
+			case 'darkMode': return 'Dark Mode';
+			case 'lightMode': return 'Light Mode';
+			case 'resetColor': return 'Reset Color';
+			case 'inputStyle': return 'Input Style';
+			case 'fullBorder': return 'Full Border';
+			case 'bottomBorder': return 'Bottom Border';
+			case 'checkingServer': return 'Checking server...';
+			case 'serverOnlineVersion': return ({required Object version}) => 'Server online (v${version})';
+			case 'cannotConnectToServer': return 'Cannot connect to server';
+			case 'testingCredentials': return 'Testing credentials...';
+			case 'authenticationSuccessful': return 'Authentication successful';
+			case 'authError': return ({required Object error}) => 'Auth error: ${error}';
+			case 'unableToConnectToServer': return 'Unable to connect to server!';
+			case 'noDatabaseConfigured': return 'No database configured';
+			case 'errorDownloading': return ({required Object filename, required Object error}) => 'Error downloading ${filename}: ${error}';
+			case 'errorPreparingDocument': return ({required Object filename, required Object error}) => 'Error preparing document ${filename}: ${error}';
+			case 'uploadFailed': return ({required Object message}) => 'Upload failed: ${message}';
+			case 'unknownError': return 'Unknown error';
+			case 'errorUploading': return ({required Object filename, required Object error}) => 'Error uploading ${filename}: ${error}';
+			case 'boxNotFound': return ({required Object boxName}) => 'Box not found: ${boxName}';
+			case 'documentNotFound': return ({required Object documentKey}) => 'Document not found: ${documentKey}';
 			default: return null;
 		}
 	}
@@ -226,6 +298,30 @@ extension on _StringsIt {
 			case 'no': return 'No';
 			case 'errorInField': return ({required Object field}) => 'Errore nel campo ${field}';
 			case 'checkData': return 'Controlla i dati inseriti!';
+			case 'preferences': return 'Preferenze';
+			case 'colorPreferences': return 'Preferenze Colore';
+			case 'theme': return 'Tema';
+			case 'darkMode': return 'Modalità Scura';
+			case 'lightMode': return 'Modalità Chiara';
+			case 'resetColor': return 'Ripristina';
+			case 'inputStyle': return 'Stile Input';
+			case 'fullBorder': return 'Bordo Completo';
+			case 'bottomBorder': return 'Bordo Inferiore';
+			case 'checkingServer': return 'Verifica server...';
+			case 'serverOnlineVersion': return ({required Object version}) => 'Server online (v${version})';
+			case 'cannotConnectToServer': return 'Impossibile connettersi al server';
+			case 'testingCredentials': return 'Test credenziali...';
+			case 'authenticationSuccessful': return 'Autenticazione riuscita';
+			case 'authError': return ({required Object error}) => 'Errore di autenticazione: ${error}';
+			case 'unableToConnectToServer': return 'Impossibile connettersi al server!';
+			case 'noDatabaseConfigured': return 'Nessun database configurato';
+			case 'errorDownloading': return ({required Object filename, required Object error}) => 'Errore scaricamento ${filename}: ${error}';
+			case 'errorPreparingDocument': return ({required Object filename, required Object error}) => 'Errore preparazione documento ${filename}: ${error}';
+			case 'uploadFailed': return ({required Object message}) => 'Upload fallito: ${message}';
+			case 'unknownError': return 'Errore sconosciuto';
+			case 'errorUploading': return ({required Object filename, required Object error}) => 'Errore upload ${filename}: ${error}';
+			case 'boxNotFound': return ({required Object boxName}) => 'Box non trovato: ${boxName}';
+			case 'documentNotFound': return ({required Object documentKey}) => 'Documento non trovato: ${documentKey}';
 			default: return null;
 		}
 	}
