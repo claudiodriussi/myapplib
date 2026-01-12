@@ -47,13 +47,14 @@ class RestClient {
     required String server,
     required int port,
     required String prefix,
+    String apiVersion = '/api/v1',
     int timeout = 5,
   }) async {
     String address = getAddress(server, port, prefix);
 
     try {
       var r = await http.get(
-        Uri.parse('$address/api/v1/status'),
+        Uri.parse('$address$apiVersion/status'),
       ).timeout(Duration(seconds: timeout));
 
       return json.decode(r.body);
@@ -120,6 +121,7 @@ class RestClient {
   final String password;
   final String folder;
   final String prefix;
+  final String apiVersion;  // API version path (default: /api/v1)
 
   final Map<String, String> endpoints;
   final String workPath;
@@ -133,6 +135,7 @@ class RestClient {
   /// Constructor
   /// Creates local folders and initializes configuration
   /// [prefix] is optional and will be added between server:port and endpoints
+  /// [apiVersion] sets the API version path (default: '/api/v1')
   /// [archivePath] is the folder name for document archive (default: 'documents')
   /// Example: server="http://192.168.0.71", port=5000, prefix="local"
   /// Results in: http://192.168.0.71:5000/local/api/v1/token
@@ -143,11 +146,12 @@ class RestClient {
     required this.password,
     required this.folder,
     this.prefix = '',
+    this.apiVersion = '/api/v1',
     this.context,
     this.endpoints = const {
-      'token': '/api/v1/token',
-      'download': '/api/v1/download_auto',
-      'upload': '/api/v1/upload'
+      'token': '/token',
+      'download': '/download_auto',
+      'upload': '/upload'
     },
     this.workPath = '',
     this.database,
@@ -211,6 +215,114 @@ class RestClient {
     }
   }
 
+  /// Generic GET request with optional authentication
+  ///
+  /// Endpoint resolution (simple rule):
+  /// - Starts with '/' → absolute path, use as-is
+  /// - No leading '/'  → relative path, prepend apiVersion
+  ///
+  /// Examples:
+  ///   'inventory'          → /api/v1/inventory
+  ///   'status'             → /api/v1/status
+  ///   '/inventory'         → /inventory (absolute)
+  ///   '/api/v2/new'        → /api/v2/new (absolute)
+  ///   '/legacy/endpoint'   → /legacy/endpoint (absolute)
+  ///
+  /// [queryParams] are added as query string
+  /// [requiresAuth] adds Authorization header if true (default: true - secure by default)
+  /// Returns parsed JSON response
+  Future<Map<String, dynamic>> get(
+    String endpoint, {
+    Map<String, String>? queryParams,
+    bool requiresAuth = true,
+    int timeout = 10,
+  }) async {
+    // Simple rule: starts with / = absolute, otherwise relative
+    String fullEndpoint = endpoint.startsWith('/')
+        ? endpoint
+        : '$apiVersion/$endpoint';
+
+    String url = address + fullEndpoint;
+
+    // Add query parameters
+    if (queryParams != null && queryParams.isNotEmpty) {
+      String query = queryParams.entries
+          .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      url += '?$query';
+    }
+
+    // Prepare headers with authentication if required
+    Map<String, String>? headers;
+    if (requiresAuth) {
+      if (token.isEmpty) {
+        throw Exception('Authentication required but no token available. Call getToken() first.');
+      }
+      headers = {'Authorization': 'Bearer $token'};
+    }
+
+    // Make request
+    var response = await client
+        .get(Uri.parse(url), headers: headers)
+        .timeout(Duration(seconds: timeout));
+
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    return json.decode(response.body);
+  }
+
+  /// Generic POST request with optional authentication
+  ///
+  /// Endpoint resolution (simple rule):
+  /// - Starts with '/' → absolute path, use as-is
+  /// - No leading '/'  → relative path, prepend apiVersion
+  ///
+  /// Examples:
+  ///   'upload'             → /api/v1/upload
+  ///   'token'              → /api/v1/token
+  ///   '/upload'            → /upload (absolute)
+  ///   '/api/v2/new'        → /api/v2/new (absolute)
+  ///   '/legacy/endpoint'   → /legacy/endpoint (absolute)
+  ///
+  /// [body] is sent as form data
+  /// [requiresAuth] adds Authorization header if true (default: true - secure by default)
+  /// Returns parsed JSON response
+  Future<Map<String, dynamic>> post(
+    String endpoint, {
+    Map<String, dynamic>? body,
+    bool requiresAuth = true,
+    int timeout = 10,
+  }) async {
+    // Simple rule: starts with / = absolute, otherwise relative
+    String fullEndpoint = endpoint.startsWith('/')
+        ? endpoint
+        : '$apiVersion/$endpoint';
+
+    String url = address + fullEndpoint;
+
+    // Prepare headers with authentication if required
+    Map<String, String>? headers;
+    if (requiresAuth) {
+      if (token.isEmpty) {
+        throw Exception('Authentication required but no token available. Call getToken() first.');
+      }
+      headers = {'Authorization': 'Bearer $token'};
+    }
+
+    // Make request
+    var response = await client
+        .post(Uri.parse(url), body: body, headers: headers)
+        .timeout(Duration(seconds: timeout));
+
+    if (response.statusCode != 200) {
+      throw Exception('HTTP ${response.statusCode}: ${response.body}');
+    }
+
+    return json.decode(response.body);
+  }
+
   /// Get authentication token from server
   Future<bool> getToken({timeout = 5}) async {
     try {
@@ -222,7 +334,7 @@ class RestClient {
         'deviceId': app.settings['deviceId'] ?? '',
       };
       var r = await client
-          .post(Uri.parse(address + endPoint), body: data)
+          .post(Uri.parse(address + apiVersion + endPoint), body: data)
           .timeout(Duration(seconds: timeout));
 
       var response = json.decode(r.body);
@@ -260,7 +372,7 @@ class RestClient {
     try {
       String endPoint = endpoints['download']!;
       Map data = {'token': token, 'file': filename};
-      var r = await client.post(Uri.parse(address + endPoint), body: data);
+      var r = await client.post(Uri.parse(address + apiVersion + endPoint), body: data);
 
       // Always check JSON content for API error pattern first
       if (r.headers['content-type']?.startsWith('application/json') == true) {
@@ -336,7 +448,7 @@ class RestClient {
       String endPoint = endpoints['upload']!;
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse(address + endPoint),
+        Uri.parse(address + apiVersion + endPoint),
       );
       request.fields['token'] = token;
 
