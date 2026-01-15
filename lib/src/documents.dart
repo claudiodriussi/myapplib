@@ -1065,6 +1065,37 @@ class ReactiveButton extends StatelessWidget {
   }
 }
 
+/// Async validator to check if a value exists in a SQL table
+///
+/// Usage:
+/// ```dart
+/// 'userId': FormControl<String>(
+///   asyncValidators: [ValidateTableRecord('users', sqldb)],
+/// )
+/// ```
+///
+/// Returns validation error {'Not found': true} if record doesn't exist
+class ValidateTableRecord extends AsyncValidator<dynamic> {
+  String table = "";
+  dynamic db;
+
+  ValidateTableRecord(this.table, this.db);
+
+  @override
+  Future<Map<String, dynamic>?> validate(
+    AbstractControl<dynamic> control,
+  ) async {
+    var error = {'Not found': true};
+    try {
+      var t = await db.find(table, control.value);
+      if (t.isEmpty) return error;
+    } catch (e) {
+      return error;
+    }
+    return null;
+  }
+}
+
 // ----------------------------------------------------------------------------
 // REUSABLE FILTER SYSTEM
 // ----------------------------------------------------------------------------
