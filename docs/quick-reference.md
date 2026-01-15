@@ -20,7 +20,7 @@ Quick reference guide for **myapplib**, a Flutter package library providing reus
 - **AppVars** (`lib/src/appvars.dart`) - Global singleton for app state
 - **Document** (`lib/src/documents.dart`) - Base class for form documents (header/rows pattern)
 - **RestClient** (`lib/src/restclient.dart`) - HTTP client with token auth
-- **SqlDB** (`lib/src/sqldb.dart`) - SQLite wrapper (mobile + desktop)
+- **SqlDB** (`lib/src/sqldb.dart`) - SQLite wrapper (mobile/desktop/web) with SearchForm/SearchQuery
 - **ReactiveLookupField** (`lib/src/lookupfield.dart`) - Custom lookup widget
 - **Utilities** (`lib/src/utils.dart`, `lib/src/dateutils.dart`) - Helper functions
 - **i18n** (`lib/i18n/`) - Internal Slang translations (en/it)

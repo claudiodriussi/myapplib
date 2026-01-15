@@ -13,7 +13,7 @@ final AppVars app = AppVars();
 
 class AppVars {
   // folders recognized by app. See path_provider
-  String curDir = Directory.current.path;
+  String curDir = '';
   String docDir = '';
   String tmpDir = '';
   String extDir = '';
@@ -39,7 +39,12 @@ class AppVars {
   ///
   Future<void> addBox(name) async {
     if (hiveBoxes.isEmpty) {
-      Hive.init('$extDir/hive');
+      if (isWeb()) {
+        // On web Hive uses IndexedDB automatically
+        Hive.init('hive'); // symbolic path
+      } else {
+        Hive.init('$extDir/hive');
+      }
     }
     hiveBoxes[name] = await Hive.openBox(name);
     await hiveBoxes[name]!.compact();
@@ -83,27 +88,37 @@ class AppVars {
     }
 
     // setup app folders
-    try {
-      docDir = (await getApplicationDocumentsDirectory()).path;
-    } catch (e) {
-      docDir = curDir;
+    if (isWeb()) {
+      // On web use virtual paths (Hive uses IndexedDB)
+      curDir = '/web';
+      docDir = '/web/documents';
+      tmpDir = '/web/tmp';
+      extDir = '/web/storage';
+    } else {
+      // Mobile/Desktop platforms
+      curDir = Directory.current.path;
+      try {
+        docDir = (await getApplicationDocumentsDirectory()).path;
+      } catch (e) {
+        docDir = curDir;
+      }
+      try {
+        tmpDir = (await getTemporaryDirectory()).path;
+      } catch (e) {
+        tmpDir = docDir;
+      }
+      try {
+        extDir = (await getExternalStorageDirectory())!.path;
+      } catch (e) {
+        extDir = docDir;
+      }
+      if (isDesktop()) {
+        extDir = p.join(curDir, 'data');
+      }
+      try {
+        extDirs = await getExternalStorageDirectories();
+      } catch (_) {}
     }
-    try {
-      tmpDir = (await getTemporaryDirectory()).path;
-    } catch (e) {
-      tmpDir = docDir;
-    }
-    try {
-      extDir = (await getExternalStorageDirectory())!.path;
-    } catch (e) {
-      extDir = docDir;
-    }
-    if (isDesktop()) {
-      extDir = p.join(curDir, 'data');
-    }
-    try {
-      extDirs = await getExternalStorageDirectories();
-    } catch (_) {}
 
     // setup settings, the app always have a box called settings
     await addBox('settings');
@@ -134,12 +149,19 @@ class AppVars {
   }
 
   /// Normalizes device info into standardized format
-  /// Supports Android, iOS and Desktop with uniform structure: {model, brand, device}
+  /// Supports Android, iOS, Desktop and Web with uniform structure: {model, brand, device}
   /// Returns the Map to be used with defaultSetting
   Future<Map<String, String>> setDeviceInfo() async {
     Map<String, String> deviceInfo = {};
 
-    if (isMobile()) {
+    if (isWeb()) {
+      // Web: generic values
+      deviceInfo = {
+        'model': 'Web Browser',
+        'brand': 'Web',
+        'device': 'Browser',
+      };
+    } else if (isMobile()) {
       DeviceInfoPlugin deviceInfoPlugin = DeviceInfoPlugin();
 
       if (Platform.isAndroid) {
@@ -158,7 +180,7 @@ class AppVars {
         };
       }
     } else {
-      // Desktop/Web - basic implementation
+      // Desktop: use Platform.operatingSystem
       String platform = Platform.operatingSystem;
       deviceInfo = {
         'model': Platform.localHostname,
@@ -187,6 +209,7 @@ class AppVars {
   /// check if platform is mobile
   ///
   bool isMobile() {
+    if (isWeb()) return false;
     return Platform.isIOS || Platform.isAndroid;
   }
 

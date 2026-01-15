@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' show min;
 import 'package:flutter/material.dart';
 import 'package:myapplib/myapplib.dart';
 import 'package:path/path.dart';
@@ -7,137 +8,139 @@ import 'package:sqflite/sqflite.dart' as sqflite;
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 
+// Conditional import: load web factory only on web platform
+import 'sqldb_web_stub.dart'
+    if (dart.library.js_interop) 'sqldb_web_impl.dart';
+
+// Getter for web database factory (only available on web)
+DatabaseFactory? get _webFactory => webDatabaseFactory;
+
 // =============================================================================
 // SQLITE DATABASE SYSTEM - Cross-platform SQLite with Query Automation
 // =============================================================================
 //
-// This library provides SQLite database management with automatic query
-// generation from reactive forms and cross-platform support (mobile/desktop).
+// SQLite database management with automatic query generation from reactive
+// forms. Supports mobile, desktop, and web platforms.
 //
 // ## Core Components
 //
 // ### SqlDB
-// Core database manager with cross-platform support (mobile/desktop).
-// - Automatic database restore from assets on first run
-// - Platform-aware initialization (sqflite for mobile, sqflite_ffi for desktop)
-// - Transaction support for batch operations
-// - Schema introspection for empty row generation
+// Database manager with cross-platform support (mobile/desktop/web).
+// - SQL-first schema initialization from assets/*.sql
+// - Platform-aware: sqflite (mobile), sqflite_ffi (desktop), IndexedDB (web)
+// - Transaction support and batch operations
+// - Schema introspection for empty row templates
 //
 // ### SearchForm
 // Automatic query builder from FormGroup with JOIN support.
-// - Maps FormGroup fields to SQL WHERE conditions
-// - String fields: LIKE UPPER(?) with wildcards
-// - Other types: exact match (=)
-// - Supports LEFT/INNER JOIN with fluent API
-// - Used for building search screens and list views
+// - String fields → LIKE UPPER('%value%') (case-insensitive)
+// - Other types → exact match (=)
+// - Fluent JOIN API for related tables
+// - Fields starting with '_' are ignored
+//
+// ### SearchQuery
+// Enhanced SearchForm with quick filters.
+// - Dynamic filter activation/deactivation
+// - Automatic UI generation with FilterChip widgets
+// - Conditional filter visibility
 //
 // ### IdSearch + IdSearchFld
-// Foreign key lookup automation system.
-// - Automatically resolves IDs to descriptions
+// Foreign key lookup automation.
+// - Resolves IDs to descriptions automatically
 // - Updates dependent fields on change
-// - Useful for master-detail forms (customer_id → customer_name)
+// - Useful for master-detail forms
 //
 // ## Quick Start
 //
-// ### 1. Setup Database
+// ### 1. Setup Database (All Platforms)
 // ```dart
-// // Create instance
 // SqlDB sqldb = SqlDB();
-//
-// // Open database (copies from assets if not exists)
-// await sqldb.openDatabase('$documentsPath/myapp.db', idField: 'id');
-//
-// // Database is ready, automatically copied from assets/myapp.db
+// await sqldb.openDatabase('myapp', idField: 'id');
+// // Auto-initializes from assets/myapp.sql (or .sqlite fallback)
 // ```
 //
-// ### 2. Basic Queries
+// **Web support**: Add to pubspec.yaml:
+// ```yaml
+// dependencies:
+//   sqflite_common_ffi_web: ^0.4.0
+// ```
+//
+// ### 2. Schema Initialization (SQL-first)
+// Create `assets/myapp.sql`:
+// ```sql
+// CREATE TABLE customers (id TEXT PRIMARY KEY, name TEXT);
+// INSERT INTO customers VALUES ('C001', 'ACME Corp');
+// ```
+// Schema is executed on first run. Legacy `.sqlite` files still supported.
+//
+// ### 3. Basic Operations
 // ```dart
 // // Find by ID
 // Map customer = await sqldb.find('customers', 'C001');
 //
-// // Direct query
+// // Direct query (use sqldb.db)
 // List orders = await sqldb.db.query('orders',
-//   where: 'customer_id = ?',
-//   whereArgs: ['C001']
+//   where: 'customer_id = ?', whereArgs: ['C001']
 // );
 //
-// // Transaction for batch operations
+// // Clear and populate table in transaction
 // await sqldb.clearAndPopulate('products', () async {
 //   return await fetchProductsFromAPI();
 // });
+//
+// // Compact database
+// await sqldb.vacuum();
 // ```
 //
-// ### 3. SearchForm (Automatic Query from FormGroup)
+// ### 4. SearchForm (Automatic Queries)
 // ```dart
-// // Define search form
-// SearchForm searchCustomers = SearchForm(
+// SearchForm search = SearchForm(
 //   sqldb: sqldb,
 //   table: 'customers',
-//   group: FormGroup({
-//     'name': FormControl<String>(),
-//     'city': FormControl<String>(),
-//   }),
+//   group: FormGroup({'name': FormControl<String>()}),
 //   orderBy: 'name',
 // );
 //
-// // Search automatically builds WHERE clause
-// await searchCustomers.query(); // Returns all
-//
-// // User types "John" in name field
-// searchCustomers.group.control('name').value = 'John';
-// await searchCustomers.query();
+// search.group.control('name').value = 'John';
+// await search.query();
 // // Executes: SELECT * FROM customers WHERE name LIKE UPPER('%JOHN%')
 // ```
 //
-// ### 4. SearchForm with JOIN
+// ### 5. SearchForm with JOIN
 // ```dart
-// SearchForm searchOrders = SearchForm(
-//   sqldb: sqldb,
-//   table: 'orders',
-//   group: FormGroup({
-//     'order_number': FormControl<String>(),
-//   }),
-// ).join('customer',
-//   table: 'customers',
-//   on: 'customer_id',  // orders.customer_id = customers.id
-//   select: ['name', 'city'],
-// );
-//
-// await searchOrders.query();
-// // Results include: order fields + customer_name, customer_city
+// SearchForm search = SearchForm(...)
+//   .join('customer',
+//     table: 'customers',
+//     on: 'customer_id',
+//     select: ['name', 'city'],
+//   );
+// // Results include: order.*, customer_name, customer_city
 // ```
 //
-// ### 5. IdSearch (Foreign Key Lookup)
+// ### 6. SearchQuery (Quick Filters)
 // ```dart
-// // Setup ID search for order form
-// IdSearch idSearch = IdSearch(sqldb, orderForm, notifier: orderDoc);
+// SearchQuery search = SearchQuery(...)
+//   .quickFilter('Active', where: 'status = ?', args: () => ['active'])
+//   .quickFilter('Recent', where: 'date > ?', args: () => [lastWeek]);
 //
-// idSearch.add(IdSearchFld(
-//   'customer_id',        // FormGroup field
-//   'customers',          // Lookup table
-//   destination: 'customer_name',  // Destination field for description
-//   description: 'name',  // Field to copy from table
-// ));
+// // Build UI
+// Widget filters = search.buildQuickFilters();
+// ```
 //
-// // When user enters customer_id, automatically fill customer_name
+// ### 7. IdSearch (Foreign Key Lookup)
+// ```dart
+// IdSearch idSearch = IdSearch(sqldb, orderForm);
+// idSearch.add(IdSearchFld('customer_id', 'customers',
+//   destination: 'customer_name', description: 'name'));
+//
 // await idSearch.find('customer_id');
-// // orderForm.control('customer_name').value = 'ACME Corp'
+// // Auto-fills customer_name from customers table
 // ```
 //
-// ## Assets Pattern
-//
-// Place your database file in `assets/yourdb.db` and declare in pubspec.yaml:
-// ```yaml
-// flutter:
-//   assets:
-//     - assets/yourdb.db
+// ## Force Schema Update
+// ```dart
+// await sqldb.forceRestoreFromAssets(); // Deletes DB and reloads from assets
 // ```
-//
-// On first run, the database is automatically copied from assets to the
-// application documents directory. Subsequent runs use the copied database,
-// preserving user modifications.
-//
-// To force schema update, use `forceRestoreFromAssets()`.
 //
 // =============================================================================
 
@@ -205,69 +208,276 @@ class SqlDB {
   String dbName = '';
   String idName = 'id'; // default id field name of tables
   Map emptyRows = {};
+  DatabaseFactory? _customFactory; // optional custom database factory
 
   var db;
 
-  /// open database depending on platform
-  Future<void> openDatabase(String fileName, {String? idField}) async {
+  /// Private helper to open web database with onCreate callback
+  Future<void> _openWebDatabase(String dbFileName, String baseName) async {
+    db = await _customFactory!.openDatabase(
+      dbFileName,
+      options: OpenDatabaseOptions(
+        version: 1,
+        onCreate: (db, version) async {
+          await _loadSchemaFromSQL(db, baseName);
+        },
+      ),
+    );
+  }
+
+  /// Open database with automatic platform detection (recommended)
+  ///
+  /// This is the standard method for opening databases. It automatically handles
+  /// platform differences and provides SQL-first schema initialization.
+  ///
+  /// The database name will be automatically adjusted for each platform:
+  /// - Web: uses simple name (e.g., 'myapp.db') for IndexedDB
+  /// - Mobile/Desktop: uses full path with .sqlite extension
+  ///
+  /// Schema initialization (SQL-first):
+  /// - Looks for a .sql file in assets (e.g., assets/myapp.sql)
+  /// - If found, creates empty database and executes SQL to create schema
+  /// - Fallback: copies .sqlite file from assets (legacy compatibility)
+  ///
+  /// Usage:
+  /// ```dart
+  /// // All platforms (mobile/desktop/web)
+  /// await sqldb.openDatabase('myapp');
+  /// ```
+  ///
+  /// Web support:
+  /// To enable web support, add sqflite_common_ffi_web to your app's pubspec.yaml:
+  /// ```yaml
+  /// dependencies:
+  ///   sqflite_common_ffi_web: ^0.4.0
+  /// ```
+  /// No code changes needed - web support is automatic when dependency is present.
+  ///
+  /// Parameters:
+  /// - [baseName]: Base name of database (without extension)
+  /// - [idField]: Name of ID field in tables (default: 'id')
+  ///
+  /// Assets needed:
+  /// - assets/[baseName].sql (schema SQL file) - PREFERRED
+  /// - assets/[baseName].sqlite (legacy fallback)
+  ///
+  /// For advanced usage with custom paths or factories, use [openDatabaseCustom].
+  Future<void> openDatabase(
+    String baseName, {
+    String? idField,
+  }) async {
+    if (idField != null) idName = idField;
+
+    if (app.isWeb()) {
+      // Web platform - use automatic web factory
+      _customFactory = _webFactory;
+      final dbFileName = '$baseName.db';
+
+      // Open with onCreate callback for schema initialization
+      await _openWebDatabase(dbFileName, baseName);
+
+      fileName = dbFileName;
+      dbPath = '/web';
+      dbName = dbFileName;
+
+    } else {
+      // Mobile/Desktop platform
+      final dbFileName = '$baseName.sqlite';
+      final dbFullPath = '${app.extDir}/db/$dbFileName';
+
+      // Use standard openDatabaseCustom with SQL-first support
+      await openDatabaseCustom(dbFullPath, idField: idField);
+    }
+  }
+
+  /// Open database with custom path or factory (advanced usage)
+  ///
+  /// Use this method when you need custom control over database location or factory.
+  /// For standard usage, prefer [openDatabase] instead.
+  ///
+  /// If [factory] is provided, it will be used instead of the default platform factory.
+  /// This allows using custom factories like databaseFactoryFfiWeb for web support.
+  ///
+  /// Note: On web platforms, database files cannot be copied from assets since
+  /// IndexedDB is used. Instead, a schema.sql file from assets will be executed
+  /// if the database is empty. Name the schema file to match your database
+  /// (e.g., myapp.sqlite -> myapp.sql or use schema.sql as default).
+  Future<void> openDatabaseCustom(String fileName, {String? idField, DatabaseFactory? factory}) async {
     dbPath = dirname(fileName);
     dbName = basename(fileName);
     this.fileName = fileName;
     if (idField != null) idName = idField;
-    if (app.isMobile()) {
+
+    if (factory != null) {
+      // Use custom factory (e.g., databaseFactoryFfiWeb for web)
+      _customFactory = factory;
+
+      if (app.isWeb()) {
+        // Web: Use onCreate callback to initialize schema from assets
+        await _openWebDatabase(fileName, dbName.replaceAll('.db', '').replaceAll('.sqlite', ''));
+      } else {
+        // Other platforms with custom factory
+        db = await _customFactory!.openDatabase(fileName);
+      }
+    } else if (app.isMobile()) {
+      // Mobile: use sqflite
       await checkAssets(fileName);
       db = await sqflite.openDatabase(fileName);
     } else {
-      // Desktop platforms: check and copy from assets if needed
-      await checkAssetsDesktop(fileName);
+      // Desktop: use sqflite_ffi
+      await checkAssets(fileName);
       db = await databaseFactoryFfi.openDatabase(fileName);
     }
   }
 
-  /// if database file doesn't exist on mobile, copy demo data from assets
+  /// if database file doesn't exist, copy demo data from assets (unified for mobile/desktop)
+  /// SQL-first: Tries to load .sql schema first, fallback to .sqlite file
   Future<void> checkAssets(fileName) async {
-    var exists = await sqflite.databaseExists(fileName);
+    // Check if database exists (platform-specific)
+    bool exists;
+    if (app.isMobile()) {
+      exists = await sqflite.databaseExists(fileName);
+    } else {
+      exists = await File(fileName).exists();
+    }
+
     if (!exists) {
       try {
         await Directory(dirname(fileName)).create(recursive: true);
       } catch (_) {}
-      ByteData data = await rootBundle.load(join("assets", dbName));
-      List<int> bytes =
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await File(fileName).writeAsBytes(bytes, flush: true);
+
+      // SQL-first approach: try .sql file first
+      String sqlFileName = dbName.replaceAll('.sqlite', '.sql').replaceAll('.db', '.sql');
+      bool sqlExists = false;
+
+      try {
+        await rootBundle.loadString(join("assets", sqlFileName));
+        sqlExists = true;
+      } catch (_) {
+        // SQL file doesn't exist, will try .sqlite file
+      }
+
+      if (sqlExists) {
+        // Create empty database and initialize from SQL (platform-specific)
+        dynamic tempDb;
+        if (app.isMobile()) {
+          tempDb = await sqflite.openDatabase(fileName);
+        } else {
+          tempDb = await databaseFactoryFfi.openDatabase(fileName);
+        }
+        await _loadSchemaFromSQL(tempDb, dbName.replaceAll('.sqlite', '').replaceAll('.db', ''));
+        await tempDb.close();
+      } else {
+        // Fallback: copy .sqlite file from assets (legacy)
+        ByteData data = await rootBundle.load(join("assets", dbName));
+        List<int> bytes =
+            data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+        await File(fileName).writeAsBytes(bytes, flush: true);
+      }
     }
   }
 
-  /// if database file doesn't exist on desktop, copy demo data from assets
-  Future<void> checkAssetsDesktop(fileName) async {
-    var file = File(fileName);
-    if (!await file.exists()) {
+  /// Loads and executes SQL schema and data from assets
+  /// Unified method for all platforms (web, mobile, desktop)
+  ///
+  /// Executes ALL SQL statements in the file, including:
+  /// - CREATE TABLE (schema definition)
+  /// - INSERT INTO (demo/initial data)
+  /// - CREATE INDEX (indexes)
+  /// - Any other valid SQL statements
+  ///
+  /// SQL file format example (assets/myapp.sql):
+  /// ```sql
+  /// -- Create tables
+  /// CREATE TABLE users (
+  ///   id INTEGER PRIMARY KEY,
+  ///   name TEXT NOT NULL
+  /// );
+  ///
+  /// -- Insert demo data
+  /// INSERT INTO users (id, name) VALUES (1, 'Admin');
+  /// INSERT INTO users (id, name) VALUES (2, 'User');
+  /// ```
+  ///
+  /// [db]: Database instance to execute SQL on
+  /// [baseName]: Base name of database (without extension) to find matching .sql file
+  Future<void> _loadSchemaFromSQL(dynamic db, String baseName) async {
+    try {
+      // Determine schema file name
+      String schemaName = '$baseName.sql';
+
       try {
-        await Directory(dirname(fileName)).create(recursive: true);
-      } catch (_) {}
-      ByteData data = await rootBundle.load(join("assets", dbName));
-      List<int> bytes =
-          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
-      await file.writeAsBytes(bytes, flush: true);
+        String schemaSQL = await rootBundle.loadString(join("assets", schemaName));
+
+        // Execute each SQL statement (CREATE, INSERT, etc.)
+        // Split only on semicolons at end of line (allows ; inside string values)
+        List<String> statements = schemaSQL
+            .split(RegExp(r';\s*$', multiLine: true))
+            .map((s) => s.trim())
+            .where((s) => s.isNotEmpty && !s.startsWith('--'))  // Skip empty and comments
+            .toList();
+
+        int creates = 0, inserts = 0, others = 0;
+
+        for (String statement in statements) {
+          try {
+            await db.execute(statement);
+
+            // Count statement types
+            String stmtUpper = statement.toUpperCase();
+            if (stmtUpper.startsWith('CREATE')) {
+              creates++;
+            } else if (stmtUpper.startsWith('INSERT')) {
+              inserts++;
+            } else {
+              others++;
+            }
+          } catch (e) {
+            // Error executing statement - skip
+          }
+        }
+      } catch (e) {
+        // Could not load schema from assets
+      }
+    } catch (e) {
+      // Error loading database
     }
   }
 
   /// Forces database restoration from assets even if it already exists
   /// Useful for updating the database schema
+  ///
+  /// On web: Deletes the database from IndexedDB and recreates it from schema.sql
+  /// On mobile/desktop: Deletes the database file and copies it from assets
   Future<void> forceRestoreFromAssets() async {
     await db.close();
-    var file = File(fileName);
-    if (await file.exists()) {
-      await file.delete();
+
+    if (app.isWeb()) {
+      // Web: Delete database from IndexedDB
+      if (_customFactory != null) {
+        try {
+          await _customFactory!.deleteDatabase(fileName);
+        } catch (e) {
+          // Error deleting web database
+        }
+      }
+    } else {
+      // Mobile/Desktop: Delete physical file
+      var file = File(fileName);
+      if (await file.exists()) {
+        await file.delete();
+      }
     }
-    await openDatabase(fileName, idField: idName);
+
+    // Reopen database (will restore from assets automatically)
+    await openDatabaseCustom(fileName, idField: idName, factory: _customFactory);
   }
 
   /// find the row with the given id.
   ///
   /// [idField] is optional, if not given uses the default one. If the key
   /// value is not found the optional parameter [empty] let choose to return an
-  /// empty map or a row whith empty values, the second can be used when is
+  /// empty map or a row with empty values, the second can be used when is
   /// acceptable to have a result with empty values.
   ///
   Future<Map<String, Object?>> find(String table, dynamic value,

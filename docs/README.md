@@ -162,30 +162,40 @@ var data = await client.download('/orders/123');
 
 ### 4. SqlDB (`lib/src/sqldb.dart`)
 
-Cross-platform SQLite wrapper supporting mobile and desktop.
+Cross-platform SQLite wrapper supporting mobile, desktop, and web.
 
 ```dart
-var db = SqlDB();
-await db.open('mydb.db', fromAsset: 'assets/mydb.db');
+SqlDB sqldb = SqlDB();
+await sqldb.openDatabase('myapp', idField: 'id');
+// Auto-initializes from assets/myapp.sql (or .sqlite fallback)
 
-// CRUD operations
-var customer = await db.find('customers', where: 'id = ?', whereArgs: [42]);
-var customers = await db.findAll('customers', where: 'city = ?', whereArgs: ['Rome']);
-await db.insert('customers', {'name': 'ACME', 'city': 'Rome'});
-await db.update('customers', {'city': 'Milan'}, where: 'id = ?', whereArgs: [42]);
-await db.delete('customers', where: 'id = ?', whereArgs: [42]);
+// Find by ID
+Map customer = await sqldb.find('customers', 'C001');
 
-// reactive_forms integration
-var fg = await db.toFormGroup('customers');  // Generate FormGroup from table
-var data = db.fromFormGroup(fg);             // Convert FormGroup to map
+// Direct queries (use sqldb.db for full sqflite API)
+List orders = await sqldb.db.query('orders',
+  where: 'customer_id = ?', whereArgs: ['C001']
+);
+
+// Batch operations with transaction
+await sqldb.clearAndPopulate('products', () async {
+  return await fetchProductsFromAPI();
+});
+
+// Compact database
+await sqldb.vacuum();
+
+// Empty row template
+Map empty = await sqldb.toEmpty('customers');
 ```
 
 **Features:**
-- Automatic platform detection (sqflite vs sqflite_ffi)
-- Database initialization from assets
-- CRUD operations: `find()`, `findAll()`, `insert()`, `update()`, `delete()`
-- `toEmpty(table)`: Generate empty row templates via PRAGMA introspection
-- `toFormGroup()` / `fromFormGroup()`: reactive_forms integration
+- **Web support**: Automatic when `sqflite_common_ffi_web` dependency present
+- **SQL-first schema**: Load from `assets/*.sql` (CREATE + INSERT statements)
+- **Platform detection**: sqflite (mobile), sqflite_ffi (desktop), IndexedDB (web)
+- **Query automation**: `SearchForm` and `SearchQuery` for reactive form queries
+- **Schema introspection**: `toEmpty(table)` generates templates via PRAGMA
+- **Foreign key lookup**: `IdSearch` + `IdSearchFld` for automatic field resolution
 
 ### 5. ReactiveLookupField (`lib/src/lookupfield.dart`)
 
