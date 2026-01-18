@@ -1022,18 +1022,19 @@ Future<void> defaultFormErrorHandler(BuildContext context, FormGroup formGroup) 
 /// )
 /// ```
 ///
-ReactiveButton submitButton({text = 'Ok', onOk, onError}) {
+ReactiveButton submitButton({text = 'Ok', onOk, onError, popOnSuccess = true}) {
   var rb = ReactiveButton();
   rb.text = text;
   rb.onOk = onOk;
   rb.onError = onError;
+  rb.popOnSuccess = popOnSuccess;
   return rb;
 }
 
 /// Submit button widget for reactive_forms with validation and navigation
 ///
 /// Finds parent ReactiveForm, validates on tap, executes callbacks based on
-/// validation result. Automatically pops navigation on success.
+/// validation result. Automatically pops navigation on success (unless popOnSuccess=false).
 ///
 /// Use `submitButton()` factory function instead of creating instances directly.
 ///
@@ -1042,13 +1043,14 @@ class ReactiveButton extends StatelessWidget {
   String text = "Send";
   Function? onOk;
   Function? onError;
+  bool popOnSuccess = true;
   @override
   Widget build(BuildContext context) {
     final form = ReactiveForm.of(context);
     void valid() async {
       if (form != null && form.valid) {
         if (onOk != null) await onOk!();
-        Navigator.pop(context);
+        if (popOnSuccess) Navigator.pop(context);
       } else {
         // Form validation failed, execute error callback or use default
         if (onError != null) {

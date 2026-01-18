@@ -378,6 +378,8 @@ Future<String> textBox(
 /// set to '' (empty string) for String, 0 for int/double, false for bool.
 /// DateTime and other objects are set to null.
 ///
+/// Also resets validation state (markAsUntouched/markAsPristine) for all controls.
+///
 void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool includeUnderscore = true}) {
   exceptFields ??= [];
   for (String key in formGroup.controls.keys) {
@@ -405,6 +407,10 @@ void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool inclu
         print('Type ${control.runtimeType} of control $key not handled.');
       }
     }
+
+    // Reset validation state for all controls to initial state
+    control.markAsUntouched();
+    control.markAsPristine();
   }
 }
 
