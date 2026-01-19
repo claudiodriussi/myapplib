@@ -15,118 +15,39 @@ import '../i18n/strings.g.dart' as ml;
 /// REST client for data transfer operations
 /// Configurable class suitable for myapplib with default behaviors
 class RestClient {
+  // HTTP client and connection state
   http.Client client = http.Client();
-  String address = '';
+  String address = '';  // Empty = not determined yet, will be set on first request
   String token = '';
-
   String errorMessage = "Ok";
   String comPath = '';
   BuildContext? context;
 
-  /// Build server address with port and optional prefix
-  /// Can be used as static utility or from instance
-  /// Returns formatted address string for API endpoints
-  static String getAddress(String server, int port, String prefix) {
-    String address = server;
-    if (port != 0 && port != 80) {
-      address = "$address:$port";
-    }
-    if (prefix.isNotEmpty) {
-      String p = prefix.startsWith('/') ? prefix : '/$prefix';
-      if (p.endsWith('/')) {
-        p = p.substring(0, p.length - 1);
-      }
-      address = "$address$p";
-    }
-    return address;
-  }
-
-  /// Test server status endpoint (no authentication required)
-  /// Returns status response map on success, null on failure
-  static Future<Map<String, dynamic>?> testStatus({
-    required String server,
-    required int port,
-    required String prefix,
-    String apiVersion = '/api/v1',
-    int timeout = 5,
-  }) async {
-    String address = getAddress(server, port, prefix);
-
-    try {
-      var r = await http.get(
-        Uri.parse('$address$apiVersion/status'),
-      ).timeout(Duration(seconds: timeout));
-
-      return json.decode(r.body);
-    } catch (e) {
-      return null;
-    }
-  }
-
-  /// Test complete connection including status and authentication
-  /// Returns result string with test results for display
-  static Future<String> testConnection({
-    required String server,
-    required int port,
-    required String prefix,
-    required String user,
-    required String password,
-    required String folder,
-  }) async {
-    String result = "";
-
-    // Test 1: Status endpoint
-    result += "${ml.t.checkingServer}\n";
-    var status = await testStatus(
-      server: server,
-      port: port,
-      prefix: prefix,
-    );
-
-    if (status != null) {
-      result += "- ${ml.t.serverOnlineVersion(version: status['version'])}\n\n";
-    } else {
-      return "- ${ml.t.cannotConnectToServer}";
-    }
-
-    // Test 2: Authentication
-    try {
-      result += "${ml.t.testingCredentials}\n";
-      RestClient client = RestClient(
-        server: server,
-        port: port,
-        user: user,
-        password: password,
-        folder: folder,
-        prefix: prefix,
-      );
-
-      if (await client.getToken()) {
-        result += "- ${ml.t.authenticationSuccessful}";
-      } else {
-        result += "- ${client.errorMessage}";
-      }
-      client.client.close();
-    } catch (e) {
-      result += "- ${ml.t.authError(error: e.toString())}";
-    }
-
-    return result;
-  }
-
-  // Server configuration parameters
+  // Server configuration parameters (final, set in constructor)
   final String server;
   final int port;
   final String user;
   final String password;
   final String folder;
   final String prefix;
-  final String apiVersion;  // API version path (default: /api/v1)
+  final String apiVersion;
 
+  // Fallback server configuration (optional)
+  final String server2;     // Alternative server address (e.g., for WiFi local network)
+  final int port2;          // Alternative port (if 0, uses port)
+  final double timeout;     // Default timeout in seconds for all requests (0 = use method's timeout)
+  final double timeout2;    // Timeout in seconds for fallback attempt (default: 2.0)
+
+  // Other configuration
   final Map<String, String> endpoints;
   final String workPath;
   final SqlDB? database;
   final String archivePath;
+
+  // Internal state for address determination
+  late final String _addressPrimary;   // Primary server address
+  late final String _addressFallback;  // Fallback server address (if configured)
+  late final bool _hasFallback;        // Whether fallback is configured
 
   // Configurable converters
   String Function(dynamic)? _filenameGenerator;
@@ -137,8 +58,23 @@ class RestClient {
   /// [prefix] is optional and will be added between server:port and endpoints
   /// [apiVersion] sets the API version path (default: '/api/v1')
   /// [archivePath] is the folder name for document archive (default: 'documents')
-  /// Example: server="http://192.168.0.71", port=5000, prefix="local"
-  /// Results in: http://192.168.0.71:5000/local/api/v1/token
+  ///
+  /// Timeout configuration (optional):
+  /// [timeout] default timeout in seconds for all requests (0 = use method's default)
+  /// [timeout2] timeout in seconds for fallback attempts (default: 2.0s)
+  /// Supports fractional values (e.g., 0.5, 1.5, 2.5)
+  ///
+  /// Fallback configuration (optional):
+  /// [server2] alternative server address (e.g., local WiFi network address)
+  /// [port2] alternative port (if empty but server2 set, uses primary port)
+  ///
+  /// Fallback logic:
+  /// - If server2 is empty but port2 > 0: uses same server, different port
+  /// - If server2 is set: uses server2 with port2 (or port if port2=0)
+  /// - First tries fallback with timeout2, then primary with timeout (or method's default)
+  ///
+  /// Example: server="http://example.com", port=5000, prefix="local"
+  /// Results in: http://example.com:5000/local/api/v1/token
   RestClient({
     required this.server,
     required this.port,
@@ -156,10 +92,98 @@ class RestClient {
     this.workPath = '',
     this.database,
     this.archivePath = 'documents',
+    // Timeout parameters
+    this.timeout = 0.0,
+    this.timeout2 = 2.0,
+    // Fallback parameters
+    this.server2 = '',
+    this.port2 = 0,
   }) {
     comPath = workPath.isEmpty ? '${app.extDir}/data/' : workPath;
     Directory(comPath).create(recursive: true);
-    address = RestClient.getAddress(server, port, prefix);
+
+    // Calculate primary and fallback addresses, but don't set address yet
+    // address will be determined on first request (primary or fallback)
+    _addressPrimary = RestClient.getAddress(server, port, prefix);
+
+    // Initialize fallback configuration
+    _hasFallback = server2.isNotEmpty || port2 > 0;
+    if (_hasFallback) {
+      // Use server2 if provided, otherwise use primary server
+      String fallbackServer = server2.isNotEmpty ? server2 : server;
+      // Use port2 if provided, otherwise use primary port
+      int fallbackPort = port2 > 0 ? port2 : port;
+      _addressFallback = RestClient.getAddress(fallbackServer, fallbackPort, prefix);
+    } else {
+      _addressFallback = '';
+    }
+
+    // Note: address remains empty until first request determines which to use
+  }
+
+  /// Build server address with port and optional prefix
+  /// Can be used as static utility or from instance
+  /// Returns formatted address string for API endpoints
+  /// Omits standard ports (80 for HTTP, 443 for HTTPS)
+  static String getAddress(String server, int port, String prefix) {
+    String address = server;
+    if (port != 0 && port != 80 && port != 443) {
+      address = "$address:$port";
+    }
+    if (prefix.isNotEmpty) {
+      String p = prefix.startsWith('/') ? prefix : '/$prefix';
+      if (p.endsWith('/')) {
+        p = p.substring(0, p.length - 1);
+      }
+      address = "$address$p";
+    }
+    return address;
+  }
+
+  /// Test server status endpoint (no authentication required)
+  /// Returns status response map on success, null on failure
+  /// Uses automatic fallback if configured
+  Future<Map<String, dynamic>?> testStatus({int timeout = 5}) async {
+    try {
+      return await get(
+        'status',
+        requiresAuth: false,
+        timeout: timeout,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Test complete connection including status and authentication
+  /// Returns result string with test results for display
+  /// Uses automatic fallback if configured
+  Future<String> testConnection() async {
+    String result = "";
+
+    // Test 1: Status endpoint
+    result += "${ml.t.checkingServer}\n";
+    var status = await testStatus();
+
+    if (status != null) {
+      result += "- ${ml.t.serverOnlineVersion(version: status['version'])}\n\n";
+    } else {
+      return "- ${ml.t.cannotConnectToServer}";
+    }
+
+    // Test 2: Authentication
+    try {
+      result += "${ml.t.testingCredentials}\n";
+      if (await getToken()) {
+        result += "- ${ml.t.authenticationSuccessful}";
+      } else {
+        result += "- $errorMessage";
+      }
+    } catch (e) {
+      result += "- ${ml.t.authError(error: e.toString())}";
+    }
+
+    return result;
   }
 
   /// Set custom filename generator
@@ -172,39 +196,12 @@ class RestClient {
     _documentConverter = converter;
   }
 
-  /// Default document converter
-  /// Uses Document.toJson() if available, otherwise JsonEncoder with indent and DateTime handling
-  String _defaultDocumentConverter(dynamic document) {
-    if (document is Document) {
-      return document.toJson();
-    }
-    // For complex generic objects with nested DateTime
-    const encoder = JsonEncoder.withIndent('  ');
-    return encoder.convert(_prepareForJson(document));
-  }
-
-  /// Recursive function to handle DateTime in nested structures
-  dynamic _prepareForJson(dynamic obj) {
-    if (obj is String || obj is num || obj == null) return obj;
-    if (obj is DateTime) return obj.toIso8601String();
-    if (obj is Map) {
-      return obj.map((key, value) => MapEntry(key, _prepareForJson(value)));
-    }
-    if (obj is List) {
-      return obj.map(_prepareForJson).toList();
-    }
-    return obj.toString();
-  }
-
-  /// Default filename generator
-  /// Uses Document class name or provided prefix + timestamp
-  String _defaultFilenameGenerator(dynamic document, {String prefix = "DOC"}) {
-    // If it's a Document, use class name as prefix
-    if (document is Document) {
-      prefix = document.runtimeType.toString();
-    }
-    String timestamp = DateFormat('yyyyMMdd-HHmmss-S').format(DateTime.now());
-    return "${prefix}_$timestamp.json";
+  /// Reset active address to force re-detection on next request
+  ///
+  /// Useful when network conditions change (e.g., switching from WiFi to mobile data)
+  /// Next request will re-test fallback server if configured
+  void resetActiveAddress() {
+    address = '';  // Empty triggers re-detection on next request
   }
 
   /// Show alert if context is available
@@ -231,6 +228,8 @@ class RestClient {
   /// [queryParams] are added as query string
   /// [requiresAuth] adds Authorization header if true (default: true - secure by default)
   /// Returns parsed JSON response
+  ///
+  /// Automatically uses fallback server if configured (transparent to caller)
   Future<Map<String, dynamic>> get(
     String endpoint, {
     Map<String, String>? queryParams,
@@ -242,14 +241,12 @@ class RestClient {
         ? endpoint
         : '$apiVersion/$endpoint';
 
-    String url = address + fullEndpoint;
-
     // Add query parameters
     if (queryParams != null && queryParams.isNotEmpty) {
       String query = queryParams.entries
           .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
           .join('&');
-      url += '?$query';
+      fullEndpoint += '?$query';
     }
 
     // Prepare headers with authentication if required
@@ -261,10 +258,13 @@ class RestClient {
       headers = {'Authorization': 'Bearer $token'};
     }
 
-    // Make request
-    var response = await client
-        .get(Uri.parse(url), headers: headers)
-        .timeout(Duration(seconds: timeout));
+    // Make request with automatic fallback
+    var response = await _requestWithFallback(
+      endpoint: fullEndpoint,
+      headers: headers,
+      method: 'GET',
+      methodTimeout: timeout,
+    );
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -289,6 +289,8 @@ class RestClient {
   /// [body] is sent as form data
   /// [requiresAuth] adds Authorization header if true (default: true - secure by default)
   /// Returns parsed JSON response
+  ///
+  /// Automatically uses fallback server if configured (transparent to caller)
   Future<Map<String, dynamic>> post(
     String endpoint, {
     Map<String, dynamic>? body,
@@ -300,8 +302,6 @@ class RestClient {
         ? endpoint
         : '$apiVersion/$endpoint';
 
-    String url = address + fullEndpoint;
-
     // Prepare headers with authentication if required
     Map<String, String>? headers;
     if (requiresAuth) {
@@ -311,10 +311,14 @@ class RestClient {
       headers = {'Authorization': 'Bearer $token'};
     }
 
-    // Make request
-    var response = await client
-        .post(Uri.parse(url), body: body, headers: headers)
-        .timeout(Duration(seconds: timeout));
+    // Make request with automatic fallback
+    var response = await _requestWithFallback(
+      endpoint: fullEndpoint,
+      headers: headers,
+      method: 'POST',
+      body: body,
+      methodTimeout: timeout,
+    );
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -530,5 +534,118 @@ class RestClient {
         file.delete();
       }
     }
+  }
+
+  /// Internal method: determines active server address and makes HTTP request
+  ///
+  /// On first call (address is empty), if fallback is configured:
+  /// 1. Tests fallback with timeout2 (for fast local network)
+  /// 2. If fallback succeeds, sets address = fallback for all subsequent requests
+  /// 3. If fallback fails, sets address = primary for all subsequent requests
+  ///
+  /// On subsequent calls (address already set), uses the determined address.
+  /// This is transparent to the caller - just returns the successful response.
+  ///
+  /// [endpoint] the API endpoint path
+  /// [headers] HTTP headers (including Authorization if needed)
+  /// [method] HTTP method: 'GET' or 'POST'
+  /// [body] request body for POST (null for GET)
+  /// [methodTimeout] timeout in seconds from the calling method (get/post)
+  Future<http.Response> _requestWithFallback({
+    required String endpoint,
+    required Map<String, String>? headers,
+    required String method,
+    dynamic body,
+    required int methodTimeout,
+  }) async {
+    // Determine effective timeout: use constructor timeout if set, otherwise method timeout
+    double effectiveTimeout = timeout > 0 ? timeout : methodTimeout.toDouble();
+
+    // First call: determine which address to use
+    if (address.isEmpty) {
+      // If fallback configured, try it first with timeout2
+      if (_hasFallback) {
+        try {
+          String fallbackUrl = _addressFallback + endpoint;
+          Uri fallbackUri = Uri.parse(fallbackUrl);
+
+          http.Response response;
+          if (method == 'GET') {
+            response = await client
+                .get(fallbackUri, headers: headers)
+                .timeout(Duration(milliseconds: (timeout2 * 1000).round()));
+          } else if (method == 'POST') {
+            response = await client
+                .post(fallbackUri, headers: headers, body: body)
+                .timeout(Duration(milliseconds: (timeout2 * 1000).round()));
+          } else {
+            throw Exception('Unsupported HTTP method: $method');
+          }
+
+          // Fallback works! Set address to fallback for all future requests
+          address = _addressFallback;
+          return response;
+        } catch (e) {
+          // Fallback failed, will use primary below
+        }
+      }
+
+      // No fallback or fallback failed: use primary
+      address = _addressPrimary;
+    }
+
+    // Use the determined address (either just set or from previous call)
+    String url = address + endpoint;
+    Uri uri = Uri.parse(url);
+
+    http.Response response;
+    if (method == 'GET') {
+      response = await client
+          .get(uri, headers: headers)
+          .timeout(Duration(milliseconds: (effectiveTimeout * 1000).round()));
+    } else if (method == 'POST') {
+      response = await client
+          .post(uri, headers: headers, body: body)
+          .timeout(Duration(milliseconds: (effectiveTimeout * 1000).round()));
+    } else {
+      throw Exception('Unsupported HTTP method: $method');
+    }
+
+    return response;
+  }
+
+  /// Default document converter
+  /// Uses Document.toJson() if available, otherwise JsonEncoder with indent and DateTime handling
+  String _defaultDocumentConverter(dynamic document) {
+    if (document is Document) {
+      return document.toJson();
+    }
+    // For complex generic objects with nested DateTime
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(_prepareForJson(document));
+  }
+
+  /// Recursive function to handle DateTime in nested structures
+  dynamic _prepareForJson(dynamic obj) {
+    if (obj is String || obj is num || obj == null) return obj;
+    if (obj is DateTime) return obj.toIso8601String();
+    if (obj is Map) {
+      return obj.map((key, value) => MapEntry(key, _prepareForJson(value)));
+    }
+    if (obj is List) {
+      return obj.map(_prepareForJson).toList();
+    }
+    return obj.toString();
+  }
+
+  /// Default filename generator
+  /// Uses Document class name or provided prefix + timestamp
+  String _defaultFilenameGenerator(dynamic document, {String prefix = "DOC"}) {
+    // If it's a Document, use class name as prefix
+    if (document is Document) {
+      prefix = document.runtimeType.toString();
+    }
+    String timestamp = DateFormat('yyyyMMdd-HHmmss-S').format(DateTime.now());
+    return "${prefix}_$timestamp.json";
   }
 }

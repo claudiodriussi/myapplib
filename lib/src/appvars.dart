@@ -133,6 +133,17 @@ class AppVars {
     defaultSetting('themeColor', themeColor);
     defaultSetting('darkTheme', false);
 
+    // Network/server communication settings (pattern for RestClient)
+    defaultSetting('server', '');
+    defaultSetting('port', 0);
+    defaultSetting('server2', '');     // Fallback server (e.g., WiFi vs mobile)
+    defaultSetting('port2', 0);        // Fallback port
+    defaultSetting('timeout', 0.0);    // Default timeout in seconds (0 = use method default)
+    defaultSetting('timeout2', 2.0);   // Fallback timeout in seconds
+    defaultSetting('prefix', '');
+    defaultSetting('user', '');
+    defaultSetting('password', '');
+
     // store settings again to hive
     saveSettings();
   }
