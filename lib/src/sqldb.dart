@@ -271,7 +271,7 @@ class SqlDB {
     if (app.isWeb()) {
       // Web platform - use automatic web factory
       _customFactory = _webFactory;
-      final dbFileName = '$baseName.db';
+      final dbFileName = baseName.endsWith('.db') ? baseName : '$baseName.db';
 
       // Open with onCreate callback for schema initialization
       await _openWebDatabase(dbFileName, baseName);
@@ -282,7 +282,7 @@ class SqlDB {
 
     } else {
       // Mobile/Desktop platform
-      final dbFileName = '$baseName.sqlite';
+      final dbFileName = baseName.endsWith('.sqlite') ? baseName : '$baseName.sqlite';
       final dbFullPath = '${app.extDir}/db/$dbFileName';
 
       // Use standard openDatabaseCustom with SQL-first support
@@ -524,7 +524,7 @@ class SqlDB {
     await f.copy("$fileName.old");
     f = File(newFile);
     await f.copy(fileName);
-    await openDatabase(fileName);
+    await openDatabase(dbName);
   }
 
   /// Clear a table and repopulate it with data from a callback function

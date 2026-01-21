@@ -258,13 +258,10 @@ class RestClient {
       headers = {'Authorization': 'Bearer $token'};
     }
 
-    // Make request with automatic fallback
-    var response = await _requestWithFallback(
-      endpoint: fullEndpoint,
-      headers: headers,
-      method: 'GET',
-      methodTimeout: timeout,
-    );
+    // Make request to determined address
+    var response = await client
+        .get(Uri.parse(await _getAddress() + fullEndpoint), headers: headers)
+        .timeout(Duration(seconds: timeout));
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -311,14 +308,10 @@ class RestClient {
       headers = {'Authorization': 'Bearer $token'};
     }
 
-    // Make request with automatic fallback
-    var response = await _requestWithFallback(
-      endpoint: fullEndpoint,
-      headers: headers,
-      method: 'POST',
-      body: body,
-      methodTimeout: timeout,
-    );
+    // Make request to determined address
+    var response = await client
+        .post(Uri.parse(await _getAddress() + fullEndpoint), headers: headers, body: body)
+        .timeout(Duration(seconds: timeout));
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -337,8 +330,10 @@ class RestClient {
         'folder': folder,
         'deviceId': app.settings['deviceId'] ?? '',
       };
+
+      // Make request to determined address
       var r = await client
-          .post(Uri.parse(address + apiVersion + endPoint), body: data)
+          .post(Uri.parse(await _getAddress() + apiVersion + endPoint), body: data)
           .timeout(Duration(seconds: timeout));
 
       var response = json.decode(r.body);
@@ -376,7 +371,7 @@ class RestClient {
     try {
       String endPoint = endpoints['download']!;
       Map data = {'token': token, 'file': filename};
-      var r = await client.post(Uri.parse(address + apiVersion + endPoint), body: data);
+      var r = await client.post(Uri.parse(await _getAddress() + apiVersion + endPoint), body: data);
 
       // Always check JSON content for API error pattern first
       if (r.headers['content-type']?.startsWith('application/json') == true) {
@@ -394,16 +389,16 @@ class RestClient {
           }
 
           // Valid JSON file (no error pattern) - save it
-          File(localPath).writeAsBytes(r.bodyBytes);
+          await File(localPath).writeAsBytes(r.bodyBytes);
           return true;
         } catch (_) {
           // Malformed JSON - treat as binary file
-          File(localPath).writeAsBytes(r.bodyBytes);
+          await File(localPath).writeAsBytes(r.bodyBytes);
           return true;
         }
       } else {
         // Non-JSON content - save as binary
-        File(localPath).writeAsBytes(r.bodyBytes);
+        await File(localPath).writeAsBytes(r.bodyBytes);
         return true;
       }
     } catch (e) {
@@ -452,7 +447,7 @@ class RestClient {
       String endPoint = endpoints['upload']!;
       var request = http.MultipartRequest(
         'POST',
-        Uri.parse(address + apiVersion + endPoint),
+        Uri.parse(await _getAddress() + apiVersion + endPoint),
       );
       request.fields['token'] = token;
 
@@ -536,82 +531,44 @@ class RestClient {
     }
   }
 
-  /// Internal method: determines active server address and makes HTTP request
+  /// Determine and return the active server address
   ///
-  /// On first call (address is empty), if fallback is configured:
-  /// 1. Tests fallback with timeout2 (for fast local network)
-  /// 2. If fallback succeeds, sets address = fallback for all subsequent requests
-  /// 3. If fallback fails, sets address = primary for all subsequent requests
+  /// On first call (address empty), tests which server to use:
+  /// 1. If fallback configured, tries fallback first with timeout2 (quick ping)
+  /// 2. If fallback responds, sets address = fallback
+  /// 3. If fallback fails or not configured, sets address = primary
   ///
-  /// On subsequent calls (address already set), uses the determined address.
-  /// This is transparent to the caller - just returns the successful response.
-  ///
-  /// [endpoint] the API endpoint path
-  /// [headers] HTTP headers (including Authorization if needed)
-  /// [method] HTTP method: 'GET' or 'POST'
-  /// [body] request body for POST (null for GET)
-  /// [methodTimeout] timeout in seconds from the calling method (get/post)
-  Future<http.Response> _requestWithFallback({
-    required String endpoint,
-    required Map<String, String>? headers,
-    required String method,
-    dynamic body,
-    required int methodTimeout,
-  }) async {
-    // Determine effective timeout: use constructor timeout if set, otherwise method timeout
-    double effectiveTimeout = timeout > 0 ? timeout : methodTimeout.toDouble();
+  /// On subsequent calls, returns the already determined address.
+  /// This ensures all methods (get, post, getToken, downloadFile, uploadDocument)
+  /// use the same determined server transparently.
+  Future<String> _getAddress() async {
+    // Already determined - return it
+    if (address.isNotEmpty) {
+      return address;
+    }
 
-    // First call: determine which address to use
-    if (address.isEmpty) {
-      // If fallback configured, try it first with timeout2
-      if (_hasFallback) {
-        try {
-          String fallbackUrl = _addressFallback + endpoint;
-          Uri fallbackUri = Uri.parse(fallbackUrl);
+    // If fallback configured, try it first with quick timeout
+    if (_hasFallback) {
+      try {
+        // Simple ping to status endpoint (no auth required)
+        String pingEndpoint = '$apiVersion/status';
+        Uri fallbackUri = Uri.parse(_addressFallback + pingEndpoint);
 
-          http.Response response;
-          if (method == 'GET') {
-            response = await client
-                .get(fallbackUri, headers: headers)
-                .timeout(Duration(milliseconds: (timeout2 * 1000).round()));
-          } else if (method == 'POST') {
-            response = await client
-                .post(fallbackUri, headers: headers, body: body)
-                .timeout(Duration(milliseconds: (timeout2 * 1000).round()));
-          } else {
-            throw Exception('Unsupported HTTP method: $method');
-          }
+        await client
+            .get(fallbackUri)
+            .timeout(Duration(milliseconds: (timeout2 * 1000).round()));
 
-          // Fallback works! Set address to fallback for all future requests
-          address = _addressFallback;
-          return response;
-        } catch (e) {
-          // Fallback failed, will use primary below
-        }
+        // Fallback works! Use it for all future requests
+        address = _addressFallback;
+        return address;
+      } catch (e) {
+        // Fallback failed, will use primary below
       }
-
-      // No fallback or fallback failed: use primary
-      address = _addressPrimary;
     }
 
-    // Use the determined address (either just set or from previous call)
-    String url = address + endpoint;
-    Uri uri = Uri.parse(url);
-
-    http.Response response;
-    if (method == 'GET') {
-      response = await client
-          .get(uri, headers: headers)
-          .timeout(Duration(milliseconds: (effectiveTimeout * 1000).round()));
-    } else if (method == 'POST') {
-      response = await client
-          .post(uri, headers: headers, body: body)
-          .timeout(Duration(milliseconds: (effectiveTimeout * 1000).round()));
-    } else {
-      throw Exception('Unsupported HTTP method: $method');
-    }
-
-    return response;
+    // No fallback or fallback failed: use primary
+    address = _addressPrimary;
+    return address;
   }
 
   /// Default document converter

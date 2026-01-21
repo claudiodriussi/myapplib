@@ -140,6 +140,7 @@ class AppVars {
     defaultSetting('port2', 0);        // Fallback port
     defaultSetting('timeout', 0.0);    // Default timeout in seconds (0 = use method default)
     defaultSetting('timeout2', 2.0);   // Fallback timeout in seconds
+    defaultSetting('protocol', 0);     // protocol used for communications, (0 = standard rest)
     defaultSetting('prefix', '');
     defaultSetting('user', '');
     defaultSetting('password', '');
