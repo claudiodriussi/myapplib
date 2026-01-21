@@ -1118,14 +1118,14 @@ class ValidateTableRecord extends AsyncValidator<dynamic> {
 /// - Automatic PopupMenu generation
 ///
 /// Derived classes must:
-/// 1. Initialize fgFiltri in the constructor
+/// 1. Initialize fgFilters in the constructor
 /// 2. Implement applyFilters() to read values and set filters
 /// 3. Add sort orders with addOrder() or addCustomOrder()
 ///
 abstract class FilterDocument with ChangeNotifier {
   final Map<String, dynamic> _filters = {};
   bool _isActive = true; // If false, filters are disabled (show all)
-  late FormGroup fgFiltri; // FormGroup to be initialized in derived classes
+  late FormGroup fgFilters; // FormGroup to be initialized in derived classes
 
   // Sorting system
   // Can contain List<String> (fields) or Function (custom callback)
@@ -1144,17 +1144,29 @@ abstract class FilterDocument with ChangeNotifier {
   /// Must read values from FormGroup and call appropriate set* methods
   void applyFilters();
 
-  /// Toggle filters on/off
-  void toggleActive() {
-    _isActive = !_isActive;
+  /// Toggle filters on/off, or set to specific value
+  ///
+  /// If [setActive] is null, toggles current state.
+  /// If [setActive] is true/false, sets to that value.
+  void toggleActive([bool? setActive]) {
+    if (setActive != null) {
+      _isActive = setActive;
+    } else {
+      _isActive = !_isActive;
+    }
     notifyListeners();
   }
 
   /// Reset FormGroup and filters to default values
+  ///
+  /// Uses toNull: true to reset all controls to null, which means "no filter applied"
   void resetFilters() {
-    formGroupReset(fgFiltri);
+    formGroupReset(fgFilters, toNull: true);
     applyFilters();
   }
+
+  /// Force UI refresh
+  void notify() => notifyListeners();
 
   /// Add field-based sorting
   /// The first order added becomes the default
@@ -1369,10 +1381,19 @@ abstract class FilterDocument with ChangeNotifier {
           break;
 
         case 'range':
+          // Check fieldValue is compatible for comparison
+          if (fieldValue == null) return false;
+
           dynamic from = filterDef['from'];
           dynamic to = filterDef['to'];
-          if (from != null && fieldValue < from) return false;
-          if (to != null && fieldValue > to) return false;
+
+          // For DateTime ranges, ensure fieldValue is DateTime
+          if ((from is DateTime || to is DateTime) && fieldValue is! DateTime) {
+            return false;
+          }
+
+          if (from != null && fieldValue.compareTo(from) < 0) return false;
+          if (to != null && fieldValue.compareTo(to) > 0) return false;
           break;
 
         case 'contains':

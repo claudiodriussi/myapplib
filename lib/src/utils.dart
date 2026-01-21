@@ -378,9 +378,12 @@ Future<String> textBox(
 /// set to '' (empty string) for String, 0 for int/double, false for bool.
 /// DateTime and other objects are set to null.
 ///
+/// If [toNull] is true, all controls are reset to null regardless of type.
+/// This is useful for filter forms where null means "no filter applied".
+///
 /// Also resets validation state (markAsUntouched/markAsPristine) for all controls.
 ///
-void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool includeUnderscore = true}) {
+void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool includeUnderscore = true, bool toNull = false}) {
   exceptFields ??= [];
   for (String key in formGroup.controls.keys) {
     if (!includeUnderscore && key.startsWith('_')) continue;
@@ -388,23 +391,31 @@ void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool inclu
     final control = formGroup.control(key);
 
     if (!exceptFields.contains(key) || control.value == null) {
-      if (control is FormControl<String>) {
-        control.value = '';
-      } else if (control is FormControl<int>) {
-        control.value = 0;
-      } else if (control is FormControl<double>) {
-        control.value = 0.0;
-      } else if (control is FormControl<bool>) {
-        control.value = false;
-      } else if (control is FormControl<DateTime>) {
-        control.value = null;
-      } else if (control is FormControl<Object>) {
-        control.value = null;
-      } else {
+      if (toNull) {
+        // Reset all controls to null
         if (control is FormControl) {
           control.value = null;
         }
-        print('Type ${control.runtimeType} of control $key not handled.');
+      } else {
+        // Reset to type-specific default values
+        if (control is FormControl<String>) {
+          control.value = '';
+        } else if (control is FormControl<int>) {
+          control.value = 0;
+        } else if (control is FormControl<double>) {
+          control.value = 0.0;
+        } else if (control is FormControl<bool>) {
+          control.value = false;
+        } else if (control is FormControl<DateTime>) {
+          control.value = null;
+        } else if (control is FormControl<Object>) {
+          control.value = null;
+        } else {
+          if (control is FormControl) {
+            control.value = null;
+          }
+          print('Type ${control.runtimeType} of control $key not handled.');
+        }
       }
     }
 
