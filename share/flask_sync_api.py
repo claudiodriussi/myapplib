@@ -1,4 +1,4 @@
-# Flask Sync API - Clean Version
+# Flask Sync API
 # Server -> Terminal: downloads/
 # Terminal -> Server: uploads/
 # User customizations: downloads/users/{user_id}/
@@ -16,24 +16,45 @@ from flask import Flask, request, jsonify, send_file
 app = Flask(__name__)
 
 # Configuration
-JWT_KEY = 'MyOwnSecretKey'
-DATA_HOME = './dataroot'
-TOKEN_DURATION = 300  # 5 minutes
+config = {}
 
-# Simple user management (can be loaded from YAML)
-jwt_users = {
-    'androiduser': 'secret',
-    'U001': 'password1',
-    'U002': 'password2',
-    'myuser': 'mysecret',
-    'sync_client': 'sync_password'
-}
 
-# Management users that can access any folder and don't have default folders
-MANAGEMENT_USERS = ['androiduser', 'sync_client']
+def load_config(config_file='config.yaml', data_home_override=None):
+    """Load configuration from YAML file or dict"""
+    import yaml
+    global config
 
-# Global restriction: if True, regular users can ONLY use their user_id as folder
-RESTRICTED = False  # Set to True to enforce user_id = folder_name
+    if isinstance(config_file, dict):
+        # Config provided as dict
+        config = config_file
+    elif isinstance(config_file, str) and os.path.exists(config_file):
+        # Config from file
+        with open(config_file, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        print(f"✅ Configuration loaded from {config_file}")
+    else:
+        raise FileNotFoundError(f"Configuration file '{config_file}' not found")
+
+    # Override data_home if provided
+    if data_home_override:
+        if 'server' not in config:
+            config['server'] = {}
+        config['server']['data_home'] = os.path.abspath(data_home_override)
+        print(f"📁 Data home overridden to: {config['server']['data_home']}")
+
+    return config
+
+
+def route(path: str) -> str:
+    """
+    Helper function to build route paths with api_prefix.
+    Use this instead of f-strings in @app.route decorators.
+
+    Example:
+        @app.route(route('/api/v1/status'))
+    """
+    prefix = config.get('api_prefix', '') if config else ''
+    return f"{prefix}{path}"
 
 
 def ensure_user_directories(user_folder: str) -> None:
@@ -41,31 +62,35 @@ def ensure_user_directories(user_folder: str) -> None:
     if not user_folder:
         return
 
+    data_home = config['server']['data_home']
     # Create user-specific download directory
-    user_download_dir = os.path.join(DATA_HOME, 'downloads', 'users', user_folder)
+    user_download_dir = os.path.join(data_home, 'downloads', 'users', user_folder)
     os.makedirs(user_download_dir, exist_ok=True)
 
     # Create user-specific upload directory
-    user_upload_dir = os.path.join(DATA_HOME, 'uploads', user_folder)
+    user_upload_dir = os.path.join(data_home, 'uploads', user_folder)
     os.makedirs(user_upload_dir, exist_ok=True)
 
 
 def setup_directories() -> None:
     """Create required directory structure"""
+    data_home = config['server']['data_home']
     dirs = [
-        'downloads',           # Server -> Terminal files
-        'uploads',            # Terminal -> Server files
-        'downloads/users',    # User-specific downloads
-        'logs'               # Sync logs
+        'downloads',        # Server -> Terminal files
+        'uploads',          # Terminal -> Server files
+        'downloads/users',  # User-specific downloads
+        'logs'              # Sync logs
     ]
 
     for dir_path in dirs:
-        full_path = os.path.join(DATA_HOME, dir_path)
+        full_path = os.path.join(data_home, dir_path)
         os.makedirs(full_path, exist_ok=True)
 
     # Create directories for regular users (user_id = folder_name by default)
-    for login_user in jwt_users.keys():
-        if login_user not in MANAGEMENT_USERS:
+    users = config['users']
+    management_users = config['management_users']
+    for login_user in users.keys():
+        if login_user not in management_users:
             ensure_user_directories(login_user)
 
 
@@ -79,7 +104,8 @@ def log_sync_operation(user_id: str, operation: str, details: str):
         'details': details
     }
 
-    log_file = os.path.join(DATA_HOME, 'logs', f'sync_{datetime.date.today().isoformat()}.json')
+    data_home = config['server']['data_home']
+    log_file = os.path.join(data_home, 'logs', f'sync_{datetime.date.today().isoformat()}.json')
 
     # Append to daily log file
     logs = []
@@ -98,13 +124,15 @@ def log_sync_operation(user_id: str, operation: str, details: str):
 
 def get_user_folder(login_user: str, requested_folder: Optional[str] = None) -> Optional[str]:
     """Get data folder for user with global restriction option"""
+    management_users = config['management_users']
+    restricted_mode = config.get('restricted_mode', False)
 
     # Management users can access any folder
-    if login_user in MANAGEMENT_USERS:
+    if login_user in management_users:
         return requested_folder if requested_folder else login_user
 
     # If RESTRICTED mode: regular users can ONLY use their user_id as folder
-    if RESTRICTED:
+    if restricted_mode:
         if requested_folder and requested_folder != login_user:
             return None  # Permission denied - can only use own user_id
         return login_user  # Always use user_id as folder
@@ -116,7 +144,8 @@ def get_user_folder(login_user: str, requested_folder: Optional[str] = None) -> 
 def verify_token(token_str: str) -> Optional[Tuple[str, Optional[str]]]:
     """Verify JWT token and return (user_id, user_folder)"""
     try:
-        payload = jwt.decode(token_str, JWT_KEY, algorithms=["HS256"])
+        jwt_secret = config['jwt']['secret_key']
+        payload = jwt.decode(token_str, jwt_secret, algorithms=["HS256"])
         return payload['user_id'], payload.get('user_folder')
     except jwt.ExpiredSignatureError:
         return None
@@ -126,20 +155,30 @@ def verify_token(token_str: str) -> Optional[Tuple[str, Optional[str]]]:
         return None
 
 
-@app.route('/api/v1/token', methods=['POST'])
+@app.route(route("/api/v1/token"), methods=['POST'])
 def token():
     """Generate JWT token for user authentication"""
     try:
         user_id = request.form['user']
         password = request.form['password']
         requested_folder = request.form.get('folder')  # Optional folder parameter
+        device_id = request.form.get('deviceId', '')  # Optional device ID
 
-        if user_id not in jwt_users or jwt_users[user_id] != password:
+        users = config['users']
+        if user_id not in users or users[user_id] != password:
             log_sync_operation(user_id, 'AUTH_FAILED', 'Invalid credentials')
             return jsonify(error=True, message="Invalid credentials.")
 
     except KeyError as e:
         return jsonify(error=True, message=f"Missing parameter: {e}")
+
+    # Check device authentication if enabled
+    if config.get('check_devices', False):
+        accepted_devices = config.get('devices', [])
+        if device_id not in accepted_devices:
+            log_sync_operation(user_id, 'AUTH_FAILED', f'Device not authorized: {device_id}')
+            return jsonify(error=True, message="Device not authorized.")
+        log_sync_operation(user_id, 'DEVICE_CHECK', f'Device authorized: {device_id}')
 
     # Get user folder with restriction check
     user_folder = get_user_folder(user_id, requested_folder)
@@ -154,35 +193,41 @@ def token():
         ensure_user_directories(user_folder)
 
     # Create JWT token
+    token_duration = config['jwt']['token_duration']
+    jwt_secret = config['jwt']['secret_key']
+
     payload = {
         'user_id': user_id,
         'user_folder': user_folder,  # Include folder in token
-        'exp': datetime.datetime.now(tz=pytz.utc) + datetime.timedelta(seconds=TOKEN_DURATION)
+        'exp': datetime.datetime.now(tz=pytz.utc) + datetime.timedelta(seconds=token_duration)
     }
 
     # Handle different PyJWT versions
     try:
         # PyJWT >= 2.0
-        token = jwt.encode(payload, JWT_KEY, algorithm="HS256")
+        token = jwt.encode(payload, jwt_secret, algorithm="HS256")
     except AttributeError:
         # PyJWT < 2.0 (returns bytes, need to decode)
-        token = jwt.encode(payload, JWT_KEY, algorithm="HS256").decode('utf-8')
+        token = jwt.encode(payload, jwt_secret, algorithm="HS256").decode('utf-8')
 
-    log_info = f'Token generated for {TOKEN_DURATION}s'
+    log_info = f'Token generated for {token_duration}s'
     if user_folder:
         log_info += f', folder: {user_folder}'
+    if device_id:
+        log_info += f', device: {device_id}'
 
     log_sync_operation(user_id, 'AUTH_SUCCESS', log_info)
 
     return jsonify(
         error=False,
-        message=f"Token valid for {TOKEN_DURATION} seconds.",
+        message=f"Token valid for {token_duration} seconds.",
         token=token,
-        user_folder=user_folder  # Return assigned folder to client
+        user_folder=user_folder,  # Return assigned folder to client
+        device_id=device_id  # Return device ID for confirmation
     )
 
 
-@app.route('/api/v1/downloads', methods=['POST'])
+@app.route(route('/api/v1/downloads'), methods=['POST'])
 def list_downloads():
     """List files available for download (Server -> Terminal)"""
     try:
@@ -198,9 +243,10 @@ def list_downloads():
         return jsonify(error=True, message="Missing token parameter.")
 
     files = []
+    data_home = config['server']['data_home']
 
     # Global download files (for all users)
-    downloads_dir = os.path.join(DATA_HOME, 'downloads')
+    downloads_dir = os.path.join(data_home, 'downloads')
     if os.path.exists(downloads_dir):
         for item in os.listdir(downloads_dir):
             item_path = os.path.join(downloads_dir, item)
@@ -209,7 +255,7 @@ def list_downloads():
 
     # User-specific files (if user has assigned folder)
     if user_folder:
-        user_downloads = os.path.join(DATA_HOME, 'downloads', 'users', user_folder)
+        user_downloads = os.path.join(data_home, 'downloads', 'users', user_folder)
         if os.path.exists(user_downloads):
             for item in os.listdir(user_downloads):
                 item_path = os.path.join(user_downloads, item)
@@ -225,7 +271,7 @@ def list_downloads():
     )
 
 
-@app.route('/api/v1/download_auto', methods=['POST'])
+@app.route(route('/api/v1/download_auto'), methods=['POST'])
 def download_file_auto():
     """Download file with automatic fallback: user-specific -> global"""
     try:
@@ -247,13 +293,15 @@ def download_file_auto():
 
     # Priority 1: User-specific file (if user has folder)
     if user_folder:
-        user_file_path = os.path.join(DATA_HOME, 'downloads', 'users', user_folder, filename)
+        data_home = config["server"]["data_home"]
+
+        user_file_path = os.path.join(data_home, 'downloads', 'users', user_folder, filename)
         if os.path.exists(user_file_path) and os.path.isfile(user_file_path):
             log_sync_operation(user_id, 'DOWNLOAD_AUTO', f'User file: downloads/users/{user_folder}/{filename}')
             return send_file(user_file_path)
 
     # Priority 2: Global shared file
-    global_file_path = os.path.join(DATA_HOME, 'downloads', filename)
+    global_file_path = os.path.join(data_home, 'downloads', filename)
     if os.path.exists(global_file_path) and os.path.isfile(global_file_path):
         log_sync_operation(user_id, 'DOWNLOAD_AUTO', f'Global file: downloads/{filename}')
         return send_file(global_file_path)
@@ -263,7 +311,7 @@ def download_file_auto():
     return jsonify(error=True, message=f"File '{filename}' not found in user or global directories.")
 
 
-@app.route('/api/v1/download', methods=['POST'])
+@app.route(route('/api/v1/download'), methods=['POST'])
 def download_file():
     """Download a specific file"""
     try:
@@ -289,7 +337,9 @@ def download_file():
     if not allowed:
         return jsonify(error=True, message="Access denied to requested file.")
 
-    full_path = os.path.join(DATA_HOME, file_path)
+    data_home = config["server"]["data_home"]
+
+    full_path = os.path.join(data_home, file_path)
 
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
         return jsonify(error=True, message="File not found.")
@@ -299,7 +349,7 @@ def download_file():
     return send_file(full_path)
 
 
-@app.route('/api/v1/upload', methods=['POST'])
+@app.route(route('/api/v1/upload'), methods=['POST'])
 def upload_files():
     """Upload files from terminal to server"""
     try:
@@ -321,7 +371,8 @@ def upload_files():
     upload_folder = user_folder or user_id
 
     # Ensure upload directory exists
-    upload_dir = os.path.join(DATA_HOME, 'uploads', upload_folder)
+    data_home = config["server"]["data_home"]
+    upload_dir = os.path.join(data_home, 'uploads', upload_folder)
     os.makedirs(upload_dir, exist_ok=True)
 
     uploaded_files = []
@@ -346,7 +397,7 @@ def upload_files():
     )
 
 
-@app.route('/api/v1/uploads', methods=['POST'])
+@app.route(route('/api/v1/uploads'), methods=['POST'])
 def list_uploads():
     """List uploaded files from terminals (for server processing)"""
     try:
@@ -359,14 +410,16 @@ def list_uploads():
         user_id, user_folder = auth_result
 
         # Only allow listing uploads for management users
-        if user_id not in MANAGEMENT_USERS:
+        if user_id not in config["management_users"]:
             return jsonify(error=True, message="Access denied.")
 
     except KeyError:
         return jsonify(error=True, message="Missing token parameter.")
 
     all_uploads = {}
-    uploads_dir = os.path.join(DATA_HOME, 'uploads')
+    data_home = config["server"]["data_home"]
+
+    uploads_dir = os.path.join(data_home, 'uploads')
 
     if os.path.exists(uploads_dir):
         for user_folder_name in os.listdir(uploads_dir):
@@ -386,7 +439,7 @@ def list_uploads():
     )
 
 
-@app.route('/api/v1/sync_upload', methods=['POST'])
+@app.route(route('/api/v1/sync_upload'), methods=['POST'])
 def sync_upload():
     """Upload file to specific server path (for sync client)"""
     try:
@@ -400,7 +453,7 @@ def sync_upload():
         user_id, user_folder = auth_result
 
         # Only sync clients can use this endpoint
-        if user_id not in MANAGEMENT_USERS:
+        if user_id not in config["management_users"]:
             return jsonify(error=True, message="Access denied.")
 
     except KeyError as e:
@@ -421,7 +474,9 @@ def sync_upload():
     if target_path.startswith('uploads/') or target_path.startswith('logs/'):
         return jsonify(error=True, message="Cannot sync to uploads or logs directories.")
 
-    full_path = os.path.join(DATA_HOME, target_path)
+    data_home = config["server"]["data_home"]
+
+    full_path = os.path.join(data_home, target_path)
 
     # Create directory if needed
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -438,7 +493,7 @@ def sync_upload():
     )
 
 
-@app.route('/api/v1/sync_delete', methods=['POST'])
+@app.route(route('/api/v1/sync_delete'), methods=['POST'])
 def sync_delete():
     """Delete file from server (for sync client cleanup)"""
     try:
@@ -452,7 +507,7 @@ def sync_delete():
         user_id, user_folder = auth_result
 
         # Only sync clients can use this endpoint
-        if user_id not in MANAGEMENT_USERS:
+        if user_id not in config["management_users"]:
             return jsonify(error=True, message="Access denied.")
 
     except KeyError as e:
@@ -466,7 +521,9 @@ def sync_delete():
     if not (file_path.startswith('uploads/') or file_path.startswith('logs/')):
         return jsonify(error=True, message="Can only delete from uploads or logs directories.")
 
-    full_path = os.path.join(DATA_HOME, file_path)
+    data_home = config["server"]["data_home"]
+
+    full_path = os.path.join(data_home, file_path)
 
     if not os.path.exists(full_path):
         return jsonify(error=True, message="File not found.")
@@ -485,7 +542,7 @@ def sync_delete():
     )
 
 
-@app.route('/api/v1/file_metadata', methods=['POST'])
+@app.route(route('/api/v1/file_metadata'), methods=['POST'])
 def file_metadata():
     """Get metadata for files (for sync comparison)"""
     try:
@@ -498,7 +555,7 @@ def file_metadata():
         user_id, user_folder = auth_result
 
         # Only sync clients can use this endpoint
-        if user_id not in MANAGEMENT_USERS:
+        if user_id not in config["management_users"]:
             return jsonify(error=True, message="Access denied.")
 
     except KeyError as e:
@@ -507,12 +564,14 @@ def file_metadata():
     metadata = {}
 
     # Get metadata for downloads directory (excluding uploads and logs)
-    downloads_dir = os.path.join(DATA_HOME, 'downloads')
+    data_home = config["server"]["data_home"]
+
+    downloads_dir = os.path.join(data_home, 'downloads')
     if os.path.exists(downloads_dir):
         for root, dirs, files in os.walk(downloads_dir):
             for file in files:
                 file_path = os.path.join(root, file)
-                rel_path = os.path.relpath(file_path, DATA_HOME).replace('\\', '/')
+                rel_path = os.path.relpath(file_path, data_home).replace('\\', '/')
 
                 try:
                     stat = os.stat(file_path)
@@ -537,7 +596,7 @@ def file_metadata():
     )
 
 
-@app.route('/api/v1/folders', methods=['GET'])
+@app.route(route('/api/v1/folders'), methods=['GET'])
 def list_folders():
     """List available user folders and current mappings"""
     # This endpoint doesn't require authentication for simplicity
@@ -546,12 +605,14 @@ def list_folders():
     # Get existing folders
     existing_folders = []
 
-    downloads_users_dir = os.path.join(DATA_HOME, 'downloads', 'users')
+    data_home = config["server"]["data_home"]
+
+    downloads_users_dir = os.path.join(data_home, 'downloads', 'users')
     if os.path.exists(downloads_users_dir):
         existing_folders.extend([d for d in os.listdir(downloads_users_dir)
                                  if os.path.isdir(os.path.join(downloads_users_dir, d))])
 
-    uploads_dir = os.path.join(DATA_HOME, 'uploads')
+    uploads_dir = os.path.join(data_home, 'uploads')
     if os.path.exists(uploads_dir):
         existing_folders.extend([d for d in os.listdir(uploads_dir)
                                  if os.path.isdir(os.path.join(uploads_dir, d))])
@@ -563,13 +624,13 @@ def list_folders():
         error=False,
         message="Available folders and info",
         existing_folders=existing_folders,
-        management_users=MANAGEMENT_USERS,
-        restricted_mode=RESTRICTED,
-        available_logins=list(jwt_users.keys())
+        management_users=config["management_users"],
+        restricted_mode=config.get("restricted_mode", False),
+        available_logins=list(config["users"].keys())
     )
 
 
-@app.route('/api/v1/create_folder', methods=['POST'])
+@app.route(route('/api/v1/create_folder'), methods=['POST'])
 def create_folder():
     """Create a new user folder structure"""
     try:
@@ -583,7 +644,7 @@ def create_folder():
         user_id, user_folder = auth_result
 
         # Only management users can create folders
-        if user_id not in MANAGEMENT_USERS:
+        if user_id not in config["management_users"]:
             return jsonify(error=True, message="Access denied.")
 
     except KeyError as e:
@@ -605,7 +666,7 @@ def create_folder():
     )
 
 
-@app.route('/api/v1/status', methods=['GET'])
+@app.route(route('/api/v1/status'), methods=['GET'])
 def status():
     """API status check"""
     return jsonify(
@@ -617,12 +678,27 @@ def status():
 
 
 if __name__ == '__main__':
+    import sys
+
+    # Check for config file argument
+    config_file = sys.argv[1] if len(sys.argv) > 1 else 'config.yaml'
+
+    # Load configuration
+    load_config(config_file)
+
     setup_directories()
 
-    print("Starting Flask Sync API")
-    print(f"Data directory: {os.path.abspath(DATA_HOME)}")
-    print(f"Users configured: {list(jwt_users.keys())}")
-    print(f"Management users: {MANAGEMENT_USERS}")
-    print(f"Restricted mode: {RESTRICTED}")
+    # Server configuration from config
+    server_config = config.get('server', {})
+    host = server_config.get('host', '0.0.0.0')
+    port = server_config.get('port', 5000)
+    debug = server_config.get('debug', True)
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    print("Starting Flask Sync API")
+    print(f"Server: {host}:{port} (debug: {debug})")
+    print(f"Data directory: {os.path.abspath(config['server']['data_home'])}")
+    print(f"Users configured: {list(config['users'].keys())}")
+    print(f"Management users: {config['management_users']}")
+    print(f"Restricted mode: {config.get('restricted_mode', False)}")
+
+    app.run(host=host, port=port, debug=debug)

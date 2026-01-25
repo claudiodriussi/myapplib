@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:reactive_forms/reactive_forms.dart';
 
 import 'appvars.dart';
+import 'documents.dart';
 import '../i18n/strings.g.dart' as ml;
 
 /// Safely converts any value to string, returns defaultValue if null
@@ -50,8 +51,6 @@ String f_(String label, dynamic value, {String separator = ': ', String postfix 
   if (value is String && value.isEmpty) return '';
   return '$label$separator$value$postfix';
 }
-
-
 
 /// Load a text file, if fails return null
 ///
@@ -383,7 +382,8 @@ Future<String> textBox(
 ///
 /// Also resets validation state (markAsUntouched/markAsPristine) for all controls.
 ///
-void formGroupReset(FormGroup formGroup, {List<String>? exceptFields, bool includeUnderscore = true, bool toNull = false}) {
+void formGroupReset(FormGroup formGroup,
+    {List<String>? exceptFields, bool includeUnderscore = true, bool toNull = false}) {
   exceptFields ??= [];
   for (String key in formGroup.controls.keys) {
     if (!includeUnderscore && key.startsWith('_')) continue;
@@ -496,8 +496,18 @@ int themeColor = themeColors['indigo'].value;
 /// - Dark/Light theme toggle
 /// - Material color selection via color grid
 /// - Border style preferences
+/// - Optional custom app-specific settings at the end
 class VisualSettings extends StatelessWidget {
-  const VisualSettings({Key? key}) : super(key: key);
+  final List<Widget>? customChildren;
+  final dynamic settingsObject; // HiveMap or any object with save() method
+  final Function? onSave; // Optional callback after save
+
+  const VisualSettings({
+    Key? key,
+    this.customChildren,
+    this.settingsObject,
+    this.onSave,
+  }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -511,72 +521,111 @@ class VisualSettings extends StatelessWidget {
   }
 
   Widget _form(context) {
-    return SingleChildScrollView(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Color Preferences Section
-            Text(ml.t.colorPreferences, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+    Widget content = Container(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Color Preferences Section
+          Text(ml.t.colorPreferences, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
 
-            // Color grid - rectangular tiles to save vertical space
-            const MaterialColorGrid(childAspectRatio: 1.6),
+          // Color grid - rectangular tiles to save vertical space
+          const MaterialColorGrid(childAspectRatio: 1.6),
 
-            const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-            // Theme Section
-            Text(ml.t.theme, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
+          // Theme Section
+          Text(ml.t.theme, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(app.settings['darkTheme'] ? Icons.dark_mode : Icons.light_mode),
+                label: Text(app.settings['darkTheme'] ? ml.t.darkMode : ml.t.lightMode),
+                onPressed: () => setDarkTheme(),
+              ),
+              const SizedBox(width: 10),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.refresh),
+                label: Text(ml.t.resetColor),
+                onPressed: () async {
+                  setThemeColor(themeColor);
+                  app.settings['darkTheme'] = false;
+                  app.saveSettings();
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (BuildContext context) => VisualSettings(
+                              customChildren: this.customChildren,
+                              settingsObject: this.settingsObject,
+                            )),
+                  );
+                },
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Input Style Section
+          Text(ml.t.inputStyle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              ElevatedButton.icon(
+                icon: Icon(app.settings['borderInput'] == 1 ? Icons.border_all : Icons.border_bottom),
+                label: Text(app.settings['borderInput'] == 1 ? ml.t.fullBorder : ml.t.bottomBorder),
+                onPressed: () async {
+                  app.settings['borderInput'] = app.settings['borderInput'] == 1 ? 0 : 1;
+                  app.saveSettings();
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                        builder: (BuildContext context) => VisualSettings(
+                              customChildren: this.customChildren,
+                              settingsObject: this.settingsObject,
+                            )),
+                  );
+                },
+              ),
+            ],
+          ),
+
+          // Custom app-specific settings (optional)
+          if (customChildren != null) ...[
+            const SizedBox(height: 16),
+            ...customChildren!,
+          ],
+
+          // Submit button for custom settings (optional)
+          if (customChildren != null && settingsObject != null) ...[
+            const SizedBox(height: 16),
             Row(
               children: [
-                ElevatedButton.icon(
-                  icon: Icon(app.settings['darkTheme'] ? Icons.dark_mode : Icons.light_mode),
-                  label: Text(app.settings['darkTheme'] ? ml.t.darkMode : ml.t.lightMode),
-                  onPressed: () => setDarkTheme(),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton.icon(
-                  icon: const Icon(Icons.refresh),
-                  label: Text(ml.t.resetColor),
-                  onPressed: () async {
-                    setThemeColor(themeColor);
-                    app.settings['darkTheme'] = false;
-                    app.saveSettings();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (BuildContext context) => VisualSettings()),
-                    );
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-
-            // Input Style Section
-            Text(ml.t.inputStyle, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                ElevatedButton.icon(
-                  icon: Icon(app.settings['borderInput'] == 1 ? Icons.border_all : Icons.border_bottom),
-                  label: Text(app.settings['borderInput'] == 1 ? ml.t.fullBorder : ml.t.bottomBorder),
-                  onPressed: () async {
-                    app.settings['borderInput'] = app.settings['borderInput'] == 1 ? 0 : 1;
-                    app.saveSettings();
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (BuildContext context) => const VisualSettings()),
-                    );
+                submitButton(
+                  onOk: () {
+                    settingsObject.save();
+                    if (onSave != null) {
+                      onSave!();
+                    }
                   },
                 ),
               ],
             ),
           ],
-        ),
+        ],
       ),
     );
+
+    // Wrap in ReactiveForm if settingsObject provided
+    if (settingsObject != null && settingsObject.fgMap != null) {
+      content = ReactiveForm(
+        formGroup: settingsObject.fgMap,
+        child: content,
+      );
+    }
+
+    return SingleChildScrollView(child: content);
   }
 }
 
