@@ -273,10 +273,16 @@ def list_downloads():
 
 @app.route(route('/api/v1/download_auto'), methods=['POST'])
 def download_file_auto():
-    """Download file with automatic fallback: user-specific -> global"""
+    """Download file with automatic fallback: user-specific -> global
+
+    Optional timestamp parameter (ISO 8601 UTC) for conditional download:
+    - If client timestamp >= server file mtime, returns JSON {"error": false, "message": "Database is up to date"}
+    - Otherwise, sends the file normally
+    """
     try:
         token_str = request.form['token']
         filename = request.form['file']  # Just filename, not full path
+        client_timestamp = request.form.get('timestamp')  # Optional ISO 8601 UTC timestamp
 
         auth_result = verify_token(token_str)
         if not auth_result:
@@ -291,24 +297,58 @@ def download_file_auto():
     if '..' in filename or '/' in filename or '\\' in filename:
         return jsonify(error=True, message="Invalid filename. Use filename only, no paths.")
 
+    data_home = config["server"]["data_home"]
+    selected_file = None
+    file_location = None
+
     # Priority 1: User-specific file (if user has folder)
     if user_folder:
-        data_home = config["server"]["data_home"]
-
         user_file_path = os.path.join(data_home, 'downloads', 'users', user_folder, filename)
         if os.path.exists(user_file_path) and os.path.isfile(user_file_path):
-            log_sync_operation(user_id, 'DOWNLOAD_AUTO', f'User file: downloads/users/{user_folder}/{filename}')
-            return send_file(user_file_path)
+            selected_file = user_file_path
+            file_location = f'downloads/users/{user_folder}/{filename}'
 
-    # Priority 2: Global shared file
-    global_file_path = os.path.join(data_home, 'downloads', filename)
-    if os.path.exists(global_file_path) and os.path.isfile(global_file_path):
-        log_sync_operation(user_id, 'DOWNLOAD_AUTO', f'Global file: downloads/{filename}')
-        return send_file(global_file_path)
+    # Priority 2: Global shared file (if not found user-specific)
+    if selected_file is None:
+        global_file_path = os.path.join(data_home, 'downloads', filename)
+        if os.path.exists(global_file_path) and os.path.isfile(global_file_path):
+            selected_file = global_file_path
+            file_location = f'downloads/{filename}'
 
     # File not found in either location
-    log_sync_operation(user_id, 'DOWNLOAD_AUTO_NOT_FOUND', f'File: {filename}, folder: {user_folder}')
-    return jsonify(error=True, message=f"File '{filename}' not found in user or global directories.")
+    if selected_file is None:
+        log_sync_operation(user_id, 'DOWNLOAD_AUTO_NOT_FOUND', f'File: {filename}, folder: {user_folder}')
+        return jsonify(error=True, message=f"File '{filename}' not found in user or global directories.")
+
+    # Check timestamp if provided
+    if client_timestamp:
+        try:
+            # Parse client timestamp (ISO 8601 UTC)
+            client_dt = datetime.datetime.fromisoformat(client_timestamp.replace('Z', '+00:00'))
+
+            # Get server file modification time
+            server_mtime = os.path.getmtime(selected_file)
+            server_dt = datetime.datetime.fromtimestamp(server_mtime, tz=pytz.utc)
+
+            # Compare timestamps
+            if client_dt >= server_dt:
+                # Client has same or newer version - no need to download
+                log_sync_operation(user_id, 'DOWNLOAD_SKIP_UPDATED_FILE',
+                                   f'File: {filename}, client: {client_timestamp}, server: {server_dt.isoformat()}')
+                return jsonify(error=False, message="File is up to date", status="up_to_date")
+
+            # Client version is older - proceed with download
+            log_sync_operation(user_id, 'DOWNLOAD_AUTO_UPDATED',
+                               f'File: {filename}, client: {client_timestamp}, server: {server_dt.isoformat()}')
+
+        except (ValueError, OSError) as e:
+            # Invalid timestamp format or file stat error - proceed with download anyway
+            log_sync_operation(user_id, 'DOWNLOAD_AUTO_TIMESTAMP_ERROR',
+                               f'File: {filename}, error: {str(e)}')
+
+    # Send file
+    log_sync_operation(user_id, 'DOWNLOAD_AUTO', f'File: {file_location}')
+    return send_file(selected_file)
 
 
 @app.route(route('/api/v1/download'), methods=['POST'])

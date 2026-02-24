@@ -351,7 +351,7 @@ class SqlDB {
       bool sqlExists = false;
 
       try {
-        await rootBundle.loadString(join("assets", sqlFileName));
+        await rootBundle.loadString("assets/$sqlFileName");
         sqlExists = true;
       } catch (_) {
         // SQL file doesn't exist, will try .sqlite file
@@ -369,7 +369,7 @@ class SqlDB {
         await tempDb.close();
       } else {
         // Fallback: copy .sqlite file from assets (legacy)
-        ByteData data = await rootBundle.load(join("assets", dbName));
+        ByteData data = await rootBundle.load("assets/$dbName");
         List<int> bytes =
             data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
         await File(fileName).writeAsBytes(bytes, flush: true);
@@ -407,7 +407,7 @@ class SqlDB {
       String schemaName = '$baseName.sql';
 
       try {
-        String schemaSQL = await rootBundle.loadString(join("assets", schemaName));
+        String schemaSQL = await rootBundle.loadString("assets/$schemaName");
 
         // Execute each SQL statement (CREATE, INSERT, etc.)
         // Split only on semicolons at end of line (allows ; inside string values)
@@ -567,6 +567,48 @@ class SqlDB {
   ///
   Future<void> vacuum() async {
     await db.execute('VACUUM');
+  }
+
+  /// Get database file modification timestamp
+  ///
+  /// Returns the last modification time of the database file as ISO 8601 string in UTC.
+  /// This is useful for checking if the local database needs to be updated from the server.
+  ///
+  /// Returns null if:
+  /// - Running on web platform (no physical file)
+  /// - Database file doesn't exist
+  /// - Error reading file stats
+  ///
+  /// Example:
+  /// ```dart
+  /// String? timestamp = await sqldb.getDatabaseTimestamp();
+  /// if (timestamp != null) {
+  ///   // Send to server to check if update is needed
+  /// }
+  /// ```
+  ///
+  Future<String?> getDatabaseTimestamp() async {
+    // Web platform: no physical file, return null
+    if (app.isWeb()) {
+      return null;
+    }
+
+    try {
+      File dbFile = File(fileName);
+      if (!await dbFile.exists()) {
+        return null;
+      }
+
+      // Get file stats and extract modification time
+      FileStat stats = await dbFile.stat();
+
+      // Convert to UTC and format as ISO 8601
+      DateTime modifiedUtc = stats.modified.toUtc();
+      return modifiedUtc.toIso8601String();
+    } catch (e) {
+      // Error reading file stats
+      return null;
+    }
   }
 }
 

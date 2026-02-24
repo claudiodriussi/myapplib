@@ -132,6 +132,7 @@ class AppVars {
     defaultSetting('borderInput', 1);
     defaultSetting('themeColor', themeColor);
     defaultSetting('darkTheme', false);
+    defaultSetting('desktopWindowPos', ''); // Format: "x;y;width;height"
 
     // Network/server communication settings (pattern for RestClient)
     defaultSetting('server', '');

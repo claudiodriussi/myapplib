@@ -1067,6 +1067,19 @@ class ReactiveButton extends StatelessWidget {
   }
 }
 
+/// Validation mode for table record validation
+enum TableValidationMode {
+  /// Strict validation: value must exist in DB table (default)
+  strict,
+
+  /// Required but flexible: value must be non-empty but can be any value
+  /// (allows values not in DB)
+  required,
+
+  /// Optional: value can be empty (no validation)
+  optional,
+}
+
 /// Async validator to check if a value exists in a SQL table
 ///
 /// Usage:
@@ -1076,17 +1089,40 @@ class ReactiveButton extends StatelessWidget {
 /// )
 /// ```
 ///
-/// Returns validation error {'Not found': true} if record doesn't exist
+/// Supports three validation modes:
+/// - `TableValidationMode.strict` (default): value must exist in DB
+/// - `TableValidationMode.required`: value must be non-empty but accepts any value
+/// - `TableValidationMode.optional`: no validation, accepts empty values
+///
+/// Returns validation error {'Not found': true} if record doesn't exist (strict mode)
+/// or {'required': true} if value is empty (required mode)
 class ValidateTableRecord extends AsyncValidator<dynamic> {
   String table = "";
   dynamic db;
+  TableValidationMode mode;
 
-  ValidateTableRecord(this.table, this.db);
+  ValidateTableRecord(this.table, this.db, {this.mode = TableValidationMode.strict});
 
   @override
   Future<Map<String, dynamic>?> validate(
     AbstractControl<dynamic> control,
   ) async {
+    final value = control.value;
+
+    // Optional mode: no validation
+    if (mode == TableValidationMode.optional) {
+      return null;
+    }
+
+    // Required mode: check if non-empty, but don't validate against DB
+    if (mode == TableValidationMode.required) {
+      if (value == null || value.toString().trim().isEmpty) {
+        return {'required': true};
+      }
+      return null; // Non-empty value is valid
+    }
+
+    // Strict mode (default): must exist in DB
     var error = {'Not found': true};
     try {
       var t = await db.find(table, control.value);

@@ -298,21 +298,25 @@ class _LookupFieldBuilderState<T> extends State<_LookupFieldBuilder<T>> {
     );
   }
 
-  /// Builds the readonly version with description and lookup button  
+  /// Builds the readonly version with description and lookup button
   Widget _buildReadonlyField() {
     final control = widget.field.control;
     final value = control.value;
     final displayText = _isLoading
         ? 'Loading...'
-        : (_description != null && value != null 
+        : (_description != null && value != null
             ? '${value}${widget.separator}$_description'
             : value?.toString() ?? widget.hint ?? 'Not selected');
+
+    if (_textController.text != displayText) {
+      _textController.text = displayText;
+    }
 
     return Row(
       children: [
         Expanded(
           child: TextFormField(
-            controller: TextEditingController(text: displayText),
+            controller: _textController,
             readOnly: true, // Solo lettura ma mantiene pulsanti attivi
             decoration: widget.decoration ?? 
               inputDecoration(

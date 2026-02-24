@@ -186,6 +186,45 @@ class RestClient {
     return result;
   }
 
+  /// Register device information with server for licensing purposes
+  ///
+  /// Sends device info to server for license key generation without requiring authentication.
+  /// This is a fire-and-forget operation that doesn't block main app functionality.
+  ///
+  /// Data sent:
+  /// - deviceId: unique device UUID
+  /// - deviceInfo: {model, brand, device} from device_info_plus
+  /// - activationUser: customer/user name for licensing
+  /// - appName: application name
+  /// - appVersion: application version
+  ///
+  /// Returns true on success, false on failure (silent, non-blocking)
+  Future<bool> registerDevice() async {
+    try {
+      Map<String, String> data = {
+        'deviceId': app.settings['deviceId']?.toString() ?? '',
+        'deviceInfo': json.encode(app.settings['deviceInfo'] ?? {}),
+        'activationUser': app.settings['activationUser']?.toString() ?? '',
+        'appName': app.appName,
+        'appVersion': app.appVersion,
+      };
+
+      String endPoint = endpoints['register'] ?? '/register_device';
+      var r = await client.post(
+        Uri.parse(await _getAddress() + apiVersion + endPoint),
+        body: data,
+      );
+
+      if (r.statusCode == 200) {
+        return true;
+      }
+      return false;
+    } catch (e) {
+      // Silent fail - registration is optional for licensing, doesn't block app
+      return false;
+    }
+  }
+
   /// Set custom filename generator
   void setFilenameGenerator(String Function(dynamic) generator) {
     _filenameGenerator = generator;
@@ -351,44 +390,75 @@ class RestClient {
   }
 
   /// Import database automatically with backup
-  Future<bool> importDbAuto() async {
+  ///
+  /// [checkTimestamp] if true, sends the local database modification timestamp
+  /// to the server. The server can use this to decide whether to send the updated
+  /// database or skip if the local version is already current.
+  Future<bool> importDbAuto({bool checkTimestamp = false}) async {
     if (database == null) {
       await alert(ml.t.noDatabaseConfigured);
       return false;
     }
     SqlDB db = database!;
     String filename = db.dbName;
+    String downloadedFile = '$comPath$filename';
 
-    bool isOk = await downloadFile(filename);
-    if (isOk) await db.copyDB('$comPath$filename');
+    String? timestamp;
+    if (checkTimestamp) {
+      timestamp = await db.getDatabaseTimestamp();
+    }
+
+    // Delete any previous download to ensure we only copy if freshly downloaded
+    File file = File(downloadedFile);
+    if (await file.exists()) {
+      await file.delete();
+    }
+
+    bool isOk = await downloadFile(filename, timestamp: timestamp);
+    // Only copy database if file was actually downloaded
+    // If up_to_date, downloadFile returns true but doesn't write the file
+    if (isOk && await file.exists()) {
+      await db.copyDB(downloadedFile);
+    }
+
     return isOk;
   }
 
   /// Download specific file with auto-fallback
-  Future<bool> downloadFile(String filename, {String? localPath}) async {
+  ///
+  /// [timestamp] optional ISO 8601 timestamp in UTC of the local file.
+  /// If provided, the server can use it to check if the file needs updating.
+  Future<bool> downloadFile(String filename, {String? localPath, String? timestamp}) async {
     localPath ??= '$comPath$filename';
 
     try {
       String endPoint = endpoints['download']!;
-      Map data = {'token': token, 'file': filename};
+      Map<String, String> data = {'token': token, 'file': filename};
+      if (timestamp != null) {
+        data['timestamp'] = timestamp;
+      }
       var r = await client.post(Uri.parse(await _getAddress() + apiVersion + endPoint), body: data);
 
-      // Always check JSON content for API error pattern first
+      // Always check JSON content for API responses first
       if (r.headers['content-type']?.startsWith('application/json') == true) {
         try {
           var jsonResponse = json.decode(r.body);
 
-          // Check for API error pattern: {"error": true, "message": "..."}
-          if (jsonResponse is Map &&
-              jsonResponse.containsKey('error') &&
-              jsonResponse['error'] == true &&
-              jsonResponse.containsKey('message')) {
-            // This is an API error response
-            await alert(jsonResponse['message']);
-            return false;
+          if (jsonResponse is Map && jsonResponse.containsKey('error')) {
+            // Check for API error: {"error": true, "message": "..."}
+            if (jsonResponse['error'] == true) {
+              await alert(jsonResponse['message'] ?? 'Unknown error');
+              return false;
+            }
+
+            // Check for "file up to date": {"error": false, "status": "up_to_date"}
+            if ((jsonResponse['status'] ?? '') == 'up_to_date') {
+              // File is already up to date - return success without downloading
+              return true;
+            }
           }
 
-          // Valid JSON file (no error pattern) - save it
+          // Valid JSON file (no error/status pattern) - save it
           await File(localPath).writeAsBytes(r.bodyBytes);
           return true;
         } catch (_) {
