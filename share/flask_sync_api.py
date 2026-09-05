@@ -57,6 +57,21 @@ def route(path: str) -> str:
     return f"{prefix}{path}"
 
 
+def safe_path(root: str, *parts: str) -> Optional[str]:
+    """Join client-supplied path fragments under root, or None if they escape it.
+
+    Resolves with realpath *before* the containment test, so it holds against
+    "..", absolute paths, and symlinks inside root pointing out of it. Prefix
+    comparison rather than os.path.commonpath: on Windows commonpath raises for
+    paths on different drives, which must answer "no", not crash.
+    """
+    root_real = os.path.realpath(root)
+    candidate = os.path.realpath(os.path.join(root_real, *parts))
+    if candidate != root_real and not candidate.startswith(root_real + os.sep):
+        return None
+    return candidate
+
+
 def ensure_user_directories(user_folder: str) -> None:
     """Create directories for a specific user folder if they don't exist"""
     if not user_folder:
@@ -379,7 +394,9 @@ def download_file():
 
     data_home = config["server"]["data_home"]
 
-    full_path = os.path.join(data_home, file_path)
+    full_path = safe_path(data_home, file_path)
+    if not full_path:
+        return jsonify(error=True, message="Access denied to requested file.")
 
     if not os.path.exists(full_path) or not os.path.isfile(full_path):
         return jsonify(error=True, message="File not found.")
@@ -422,7 +439,9 @@ def upload_files():
         if file.filename:
             # Use original filename (client guarantees uniqueness)
             filename = file.filename
-            file_path = os.path.join(upload_dir, filename)
+            file_path = safe_path(upload_dir, filename)
+            if not file_path:
+                return jsonify(error=True, message="Invalid filename.")
 
             file.save(file_path)
             uploaded_files.append(filename)
@@ -516,7 +535,9 @@ def sync_upload():
 
     data_home = config["server"]["data_home"]
 
-    full_path = os.path.join(data_home, target_path)
+    full_path = safe_path(data_home, target_path)
+    if not full_path:
+        return jsonify(error=True, message="Invalid target path.")
 
     # Create directory if needed
     os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -563,7 +584,9 @@ def sync_delete():
 
     data_home = config["server"]["data_home"]
 
-    full_path = os.path.join(data_home, file_path)
+    full_path = safe_path(data_home, file_path)
+    if not full_path:
+        return jsonify(error=True, message="Invalid file path.")
 
     if not os.path.exists(full_path):
         return jsonify(error=True, message="File not found.")
