@@ -789,6 +789,10 @@ class SearchForm with ChangeNotifier {
   // JOIN functionality
   final Map<String, _JoinDef> _joins = {};
 
+  /// Hook called when a query fails due to a missing column (schema mismatch).
+  /// Register from the app to handle user notification and navigation.
+  static void Function(String message)? onDbError;
+
   SearchForm(
       {required this.sqldb,
       required this.table,
@@ -869,10 +873,19 @@ class SearchForm with ChangeNotifier {
       }
     }
 
-    if (where.isEmpty) {
-      q = await sqldb.db.query(table, columns: columns, orderBy: orderBy, limit: limit);
-    } else {
-      q = await sqldb.db.query(table, columns: columns, where: where, whereArgs: args, orderBy: orderBy, limit: limit);
+    try {
+      if (where.isEmpty) {
+        q = await sqldb.db.query(table, columns: columns, orderBy: orderBy, limit: limit);
+      } else {
+        q = await sqldb.db.query(table, columns: columns, where: where, whereArgs: args, orderBy: orderBy, limit: limit);
+      }
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('no such column') || msg.contains('has no column')) {
+        onDbError?.call(e.toString());
+        return [];
+      }
+      rethrow;
     }
 
     notifyListeners();
@@ -900,7 +913,18 @@ class SearchForm with ChangeNotifier {
     if (orderBy != null) sql += ' ORDER BY $orderBy';
     if (limit != null) sql += ' LIMIT $limit';
 
-    var rawResult = await sqldb.db.rawQuery(sql, args);
+    List<Map<String, Object?>> rawResult;
+    try {
+      rawResult = await sqldb.db.rawQuery(sql, args);
+    } catch (e) {
+      final msg = e.toString().toLowerCase();
+      if (msg.contains('no such column') || msg.contains('has no column')) {
+        onDbError?.call(e.toString());
+        return [];
+      }
+      rethrow;
+    }
+
     q = rawResult;
     notifyListeners();
     result = null;
